@@ -1,4 +1,4 @@
-browser-use==0.1.40
+browser-use[core]
 firebase-admin
 langchain-groq
 playwright
