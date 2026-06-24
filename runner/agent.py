@@ -7,7 +7,7 @@ from urllib.parse import quote
 
 import firebase_admin
 from firebase_admin import credentials, firestore
-from browser_use.beta import Agent, BrowserProfile, ChatBrowserUse
+from browser_use import Agent
 from langchain_groq import ChatGroq
 
 # ============================================================
@@ -79,6 +79,7 @@ async def save_lead(task_id: str, item: dict, platform: str):
             "sentToClose": False,
             "status": "new",
         })
+        print(f"Lead saved: {item.get('name')} {phone}")
     except Exception as e:
         print(f"Save lead error: {e}")
 
@@ -167,7 +168,7 @@ Compile a structured report."""
 # Main
 # ============================================================
 async def main():
-    print("Assix browser-use cloud runner starting...")
+    print("Assix browser-use runner starting...")
     cleanup_stuck_tasks()
 
     all_tasks = db.collection("assix_tasks").where("status", "==", "queued").limit(5).get()
@@ -186,60 +187,34 @@ async def main():
     db.collection("assix_tasks").document(task_id).update({
         "status": "running",
         "claimedAt": datetime.now().isoformat(),
-        "runner": "github-actions-browser-use-cloud",
+        "runner": "github-actions-browser-use",
     })
 
     await log(task_id, f"Starting: {task_type}")
     goal = build_goal(task_type, config)
-    await log(task_id, "Browser-use cloud agent starting...")
+    await log(task_id, "Agent starting...")
 
-    max_leads = config.get("maxLeads", 50)
-
-    # Use browser-use cloud with Groq
-    llm = ChatBrowserUse(
-        model="groq/llama-3.3-70b-versatile",
-        api_key=os.environ.get("BROWSER_USE_API_KEY"),
+    llm = ChatGroq(
+        model="llama-3.3-70b-versatile",
+        api_key=os.environ["GROQ_API_KEY"],
+        temperature=0,
     )
 
     agent = Agent(
         task=goal,
         llm=llm,
-        browser_profile=BrowserProfile(
-            headless=True,
-        ),
+        use_vision=True,
     )
 
-    step_count = [0]
-
     try:
-        await log(task_id, "Agent running...")
+        await log(task_id, "Browser-use agent running...")
+        history = await agent.run(max_steps=60)
 
-        async for step in agent.arun(max_steps=60):
-            step_count[0] += 1
-            action = str(step.action)[:100] if hasattr(step, 'action') and step.action else f"Step {step_count[0]}"
-            await log(task_id, f"→ {action}")
-
-            # Screenshot
-            screenshot = getattr(step, 'screenshot', None) or getattr(step, 'state_screenshot', None)
-            if screenshot:
-                db.collection("assix_tasks").document(task_id).update({
-                    "latestScreenshot": screenshot,
-                    "screenshotAt": int(datetime.now().timestamp() * 1000),
-                })
-
-            db.collection("assix_tasks").document(task_id).update({
-                "progress": step_count[0],
-                "total": max_leads,
-                "progressPct": min(int((step_count[0] / 60) * 100), 99),
-                "status": "running",
-            })
-
-        history = agent.history
-        success = history.is_successful() if hasattr(history, 'is_successful') else True
-        final_result = history.final_result() if hasattr(history, 'final_result') else str(history)
-        final_result = final_result or ""
+        success = history.is_successful()
+        final_result = history.final_result() or ""
 
         await log(task_id, f"Agent finished. Success: {success}", "success" if success else "warning")
+        await log(task_id, f"Result preview: {final_result[:300]}")
 
         is_scraping = task_type in ["google_maps_scrape", "pages_jaunes_scrape"]
         results = parse_results(final_result) if is_scraping else []
@@ -253,9 +228,9 @@ async def main():
         db.collection("assix_tasks").document(task_id).update({
             "status": "complete",
             "results": results,
-            "finalResult": str(final_result)[:5000],
+            "finalResult": final_result[:5000],
             "completedAt": datetime.now().isoformat(),
-            "progress": len(results) if results else step_count[0],
+            "progress": len(results) if results else 0,
             "progressPct": 100,
         })
 
