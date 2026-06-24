@@ -1,0 +1,2 @@
+[start]
+cmd = "npx tsx server.ts"
