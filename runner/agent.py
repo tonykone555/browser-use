@@ -22,9 +22,6 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
-# ============================================================
-# Helpers
-# ============================================================
 async def log(task_id: str, msg: str, log_type: str = "info"):
     print(f"[{log_type.upper()}] {msg}")
     entry = {
@@ -106,21 +103,6 @@ def cleanup_stuck_tasks():
         print(f"Cleanup error: {e}")
 
 
-def cleanup_old_queued():
-    try:
-        all_queued = db.collection("assix_tasks").where("status", "==", "queued").limit(20).get()
-        if len(all_queued) > 1:
-            sorted_queued = sorted(all_queued, key=lambda d: d.to_dict().get("createdAt", ""), reverse=True)
-            for old_task in sorted_queued[1:]:
-                old_task.reference.delete()
-                print(f"Deleted old queued task: {old_task.id}")
-    except Exception as e:
-        print(f"Cleanup queued error: {e}")
-
-
-# ============================================================
-# Session management — save/load cookies from Firebase
-# ============================================================
 def detect_platform(goal: str) -> str:
     goal_lower = goal.lower()
     if "leboncoin" in goal_lower: return "leboncoin"
@@ -130,6 +112,7 @@ def detect_platform(goal: str) -> str:
     if "linkedin" in goal_lower: return "linkedin"
     if "facebook" in goal_lower: return "facebook"
     if "twitter" in goal_lower or "x.com" in goal_lower: return "twitter"
+    if "reddit" in goal_lower: return "reddit"
     return "default"
 
 
@@ -162,15 +145,10 @@ async def save_session(platform: str, context):
         print(f"Save session error: {e}")
 
 
-# ============================================================
-# Build goal — universal, no pre-set messages
-# ============================================================
 def build_goal(task_type: str, config: dict) -> str:
-    # For dynamic/console tasks — use the goal exactly as typed
     if task_type == "dynamic" or task_type == "universal":
         return config.get("goal", "")
 
-    # For structured tasks
     niche = config.get("niche", "")
     city = config.get("city", "")
     max_leads = config.get("maxLeads", 50)
@@ -221,20 +199,21 @@ Compile a structured report."""
         return f"Go to {url}\n{goal}" if url else goal
 
 
-# ============================================================
-# Main
-# ============================================================
 async def main():
     print("Assix browser-use runner starting...")
-    cleanup_stuck_tasks()
-    cleanup_old_queued()
 
-    all_tasks = db.collection("assix_tasks").where("status", "==", "queued").limit(1).get()
+    # Only clean up stuck running tasks — never delete queued ones
+    cleanup_stuck_tasks()
+
+    # Find oldest queued task
+    all_tasks = db.collection("assix_tasks").where("status", "==", "queued").limit(10).get()
     if not all_tasks:
         print("No pending tasks. Exiting.")
         return
 
-    task = all_tasks[0].to_dict()
+    # Pick the oldest one
+    task_doc = sorted(all_tasks, key=lambda d: d.to_dict().get("createdAt", ""))[0]
+    task = task_doc.to_dict()
     task_id = task["taskId"]
     task_type = task["taskType"]
     config = task.get("config", {})
@@ -257,9 +236,8 @@ async def main():
         temperature=0,
     )
 
-    # Detect platform for session management
     platform = detect_platform(goal)
-    await log(task_id, f"Platform detected: {platform}")
+    await log(task_id, f"Platform: {platform}")
 
     from playwright.async_api import async_playwright
 
@@ -278,14 +256,11 @@ async def main():
             user_agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         )
 
-        # Load saved session if available
         session_loaded = await load_session(platform, context)
         if session_loaded:
             await log(task_id, f"✓ Session loaded for {platform} — already logged in", "success")
         else:
             await log(task_id, f"No saved session for {platform} — starting fresh")
-
-        page = await context.new_page()
 
         browser = Browser(
             config=BrowserConfig(
@@ -305,7 +280,6 @@ async def main():
             await log(task_id, "Browser-use agent running...")
             history = await agent.run(max_steps=60)
 
-            # Save session after successful run
             await save_session(platform, context)
 
             success = history.is_successful()
