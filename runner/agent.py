@@ -7,8 +7,8 @@ from urllib.parse import quote
 
 import firebase_admin
 from firebase_admin import credentials, firestore
-from browser_use import Agent
-from langchain_google_genai import ChatGoogleGenerativeAI
+from browser_use import Agent, Browser, BrowserConfig
+from langchain_groq import ChatGroq
 
 if not firebase_admin._apps:
     cred = credentials.Certificate({
@@ -194,15 +194,23 @@ async def main():
     goal = build_goal(task_type, config)
     await log(task_id, "Agent starting...")
 
-    llm = ChatGoogleGenerativeAI(
-        model="gemini-2.0-flash",
-        google_api_key=os.environ["GEMINI_API_KEY"],
+    llm = ChatGroq(
+        model="llama-3.3-70b-versatile",
+        api_key=os.environ["GROQ_API_KEY"],
         temperature=0,
+    )
+
+    browser = Browser(
+        config=BrowserConfig(
+            headless=False,
+            disable_security=True,
+        )
     )
 
     agent = Agent(
         task=goal,
         llm=llm,
+        browser=browser,
         use_vision=False,
     )
 
