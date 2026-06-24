@@ -7,11 +7,12 @@ from urllib.parse import quote
 
 import firebase_admin
 from firebase_admin import credentials, firestore
-from browser_use import Agent
-from browser_use.browser.views import BrowserState
-from browser_use.agent.views import AgentOutput
+from browser_use.beta import Agent, BrowserProfile, ChatBrowserUse
 from langchain_groq import ChatGroq
 
+# ============================================================
+# Firebase Init
+# ============================================================
 if not firebase_admin._apps:
     cred = credentials.Certificate({
         "type": "service_account",
@@ -24,9 +25,17 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
+# ============================================================
+# Helpers
+# ============================================================
 async def log(task_id: str, msg: str, log_type: str = "info"):
     print(f"[{log_type.upper()}] {msg}")
-    entry = {"time": datetime.now().strftime("%H:%M:%S"), "msg": msg, "type": log_type, "timestamp": int(datetime.now().timestamp() * 1000)}
+    entry = {
+        "time": datetime.now().strftime("%H:%M:%S"),
+        "msg": msg,
+        "type": log_type,
+        "timestamp": int(datetime.now().timestamp() * 1000),
+    }
     try:
         db.collection("assix_tasks").document(task_id).collection("logs").add(entry)
         task_ref = db.collection("assix_tasks").document(task_id)
@@ -39,6 +48,7 @@ async def log(task_id: str, msg: str, log_type: str = "info"):
     except Exception as e:
         print(f"Log error: {e}")
 
+
 def format_phone(raw: str) -> str:
     if not raw: return ""
     digits = re.sub(r"\D", "", raw)
@@ -47,15 +57,31 @@ def format_phone(raw: str) -> str:
     if len(digits) > 10: return "+1" + digits[-10:]
     return raw
 
+
 async def save_lead(task_id: str, item: dict, platform: str):
     phone = format_phone(item.get("phone", ""))
     if not phone or len(phone) < 7: return
     try:
         existing = db.collection("leads").where("phone", "==", phone).limit(1).get()
         if len(existing) > 0: return
-        db.collection("leads").add({"taskId": task_id, "businessName": item.get("name", "Unknown"), "phone": phone, "email": item.get("email", ""), "website": item.get("website", ""), "address": item.get("address", ""), "city": item.get("city", ""), "market": "english_ca", "leadType": "no_website" if not item.get("website") else "has_website", "source": platform, "createdAt": datetime.now().isoformat(), "sentToClose": False, "status": "new"})
+        db.collection("leads").add({
+            "taskId": task_id,
+            "businessName": item.get("name", "Unknown"),
+            "phone": phone,
+            "email": item.get("email", ""),
+            "website": item.get("website", ""),
+            "address": item.get("address", ""),
+            "city": item.get("city", ""),
+            "market": "english_ca",
+            "leadType": "no_website" if not item.get("website") else "has_website",
+            "source": platform,
+            "createdAt": datetime.now().isoformat(),
+            "sentToClose": False,
+            "status": "new",
+        })
     except Exception as e:
         print(f"Save lead error: {e}")
+
 
 def parse_results(text: str) -> list:
     try:
@@ -63,6 +89,7 @@ def parse_results(text: str) -> list:
         if match: return json.loads(match.group(0))
     except Exception: pass
     return []
+
 
 def cleanup_stuck_tasks():
     try:
@@ -80,6 +107,10 @@ def cleanup_stuck_tasks():
     except Exception as e:
         print(f"Cleanup error: {e}")
 
+
+# ============================================================
+# Build goal
+# ============================================================
 def build_goal(task_type: str, config: dict) -> str:
     niche = config.get("niche", "")
     city = config.get("city", "")
@@ -129,12 +160,14 @@ Compile a structured report."""
     else:
         goal = config.get("goal", task_type)
         url = config.get("url", "")
-        if url:
-            return f"Go to {url}\n{goal}"
-        return goal
+        return f"Go to {url}\n{goal}" if url else goal
 
+
+# ============================================================
+# Main
+# ============================================================
 async def main():
-    print("Assix browser-use runner starting...")
+    print("Assix browser-use cloud runner starting...")
     cleanup_stuck_tasks()
 
     all_tasks = db.collection("assix_tasks").where("status", "==", "queued").limit(5).get()
@@ -153,47 +186,59 @@ async def main():
     db.collection("assix_tasks").document(task_id).update({
         "status": "running",
         "claimedAt": datetime.now().isoformat(),
-        "runner": "github-actions-browser-use",
+        "runner": "github-actions-browser-use-cloud",
     })
 
     await log(task_id, f"Starting: {task_type}")
     goal = build_goal(task_type, config)
-    await log(task_id, "Agent starting...")
-
-    llm = ChatGroq(model="llama-3.3-70b-versatile", api_key=os.environ["GROQ_API_KEY"], temperature=0)
+    await log(task_id, "Browser-use cloud agent starting...")
 
     max_leads = config.get("maxLeads", 50)
+
+    # Use browser-use cloud with Groq
+    llm = ChatBrowserUse(
+        model="groq/llama-3.3-70b-versatile",
+        api_key=os.environ.get("BROWSER_USE_API_KEY"),
+    )
+
+    agent = Agent(
+        task=goal,
+        llm=llm,
+        browser_profile=BrowserProfile(
+            headless=True,
+        ),
+    )
+
     step_count = [0]
 
-    def step_callback(state: BrowserState, model_output: AgentOutput, steps: int):
-        step_count[0] = steps
-        try:
-            update_data = {"progress": steps, "total": max_leads, "progressPct": min(int((steps / 60) * 100), 99), "status": "running"}
-            if state.screenshot:
-                update_data["latestScreenshot"] = state.screenshot
-                update_data["screenshotAt"] = int(datetime.now().timestamp() * 1000)
-            db.collection("assix_tasks").document(task_id).update(update_data)
-            action_str = str(model_output.action[0])[:100] if model_output and model_output.action else ""
-            print(f"[STEP {steps}] {action_str}")
-            entry = {"time": datetime.now().strftime("%H:%M:%S"), "msg": f"→ {action_str}", "type": "info", "timestamp": int(datetime.now().timestamp() * 1000)}
-            task_ref = db.collection("assix_tasks").document(task_id)
-            task_data = task_ref.get().to_dict() or {}
-            recent_logs = task_data.get("recentLogs", [])
-            recent_logs.append(entry)
-            if len(recent_logs) > 50: recent_logs = recent_logs[-50:]
-            task_ref.update({"recentLogs": recent_logs})
-        except Exception as e:
-            print(f"Step callback error: {e}")
-
-    agent = Agent(task=goal, llm=llm, use_vision=True)
-    agent.register_new_step_callback(step_callback)
-
     try:
-        await log(task_id, "Browser-use agent running...")
-        history = await agent.run(max_steps=60)
+        await log(task_id, "Agent running...")
 
-        success = history.is_successful()
-        final_result = history.final_result() or ""
+        async for step in agent.arun(max_steps=60):
+            step_count[0] += 1
+            action = str(step.action)[:100] if hasattr(step, 'action') and step.action else f"Step {step_count[0]}"
+            await log(task_id, f"→ {action}")
+
+            # Screenshot
+            screenshot = getattr(step, 'screenshot', None) or getattr(step, 'state_screenshot', None)
+            if screenshot:
+                db.collection("assix_tasks").document(task_id).update({
+                    "latestScreenshot": screenshot,
+                    "screenshotAt": int(datetime.now().timestamp() * 1000),
+                })
+
+            db.collection("assix_tasks").document(task_id).update({
+                "progress": step_count[0],
+                "total": max_leads,
+                "progressPct": min(int((step_count[0] / 60) * 100), 99),
+                "status": "running",
+            })
+
+        history = agent.history
+        success = history.is_successful() if hasattr(history, 'is_successful') else True
+        final_result = history.final_result() if hasattr(history, 'final_result') else str(history)
+        final_result = final_result or ""
+
         await log(task_id, f"Agent finished. Success: {success}", "success" if success else "warning")
 
         is_scraping = task_type in ["google_maps_scrape", "pages_jaunes_scrape"]
@@ -205,13 +250,22 @@ async def main():
                 await save_lead(task_id, item, task_type)
             await log(task_id, f"✓ {len(results)} leads saved", "success")
 
-        db.collection("assix_tasks").document(task_id).update({"status": "complete", "results": results, "finalResult": final_result[:5000], "completedAt": datetime.now().isoformat(), "progress": len(results) if results else step_count[0], "progressPct": 100})
+        db.collection("assix_tasks").document(task_id).update({
+            "status": "complete",
+            "results": results,
+            "finalResult": str(final_result)[:5000],
+            "completedAt": datetime.now().isoformat(),
+            "progress": len(results) if results else step_count[0],
+            "progressPct": 100,
+        })
+
         await log(task_id, f"✓ Complete. {len(results)} items found.", "success")
 
     except Exception as e:
         await log(task_id, f"Error: {str(e)}", "error")
         db.collection("assix_tasks").document(task_id).update({"status": "error"})
         raise
+
 
 if __name__ == "__main__":
     asyncio.run(main())
