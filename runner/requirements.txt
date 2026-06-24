@@ -1,0 +1,4 @@
+browser-use==0.1.40
+firebase-admin
+langchain-groq
+playwright
