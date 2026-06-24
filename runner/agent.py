@@ -206,10 +206,11 @@ async def main():
     )
 
     agent = Agent(
-        task=goal,
-        llm=llm,
-        use_vision=True,
-    )
+    task=goal,
+    llm=llm,
+    use_vision=True,
+)
+
 
     try:
         await log(task_id, "Browser-use agent running...")
