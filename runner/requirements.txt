@@ -1,4 +1,4 @@
-browser-use[core]
+browser-use
 firebase-admin
 langchain-groq
 playwright
