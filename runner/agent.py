@@ -10,9 +10,6 @@ from firebase_admin import credentials, firestore
 from browser_use import Agent
 from langchain_groq import ChatGroq
 
-# ============================================================
-# Firebase Init
-# ============================================================
 if not firebase_admin._apps:
     cred = credentials.Certificate({
         "type": "service_account",
@@ -25,9 +22,6 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
-# ============================================================
-# Helpers
-# ============================================================
 async def log(task_id: str, msg: str, log_type: str = "info"):
     print(f"[{log_type.upper()}] {msg}")
     entry = {
@@ -109,9 +103,18 @@ def cleanup_stuck_tasks():
         print(f"Cleanup error: {e}")
 
 
-# ============================================================
-# Build goal
-# ============================================================
+def cleanup_old_queued():
+    try:
+        all_queued = db.collection("assix_tasks").where("status", "==", "queued").limit(20).get()
+        if len(all_queued) > 1:
+            sorted_queued = sorted(all_queued, key=lambda d: d.to_dict().get("createdAt", ""), reverse=True)
+            for old_task in sorted_queued[1:]:
+                old_task.reference.delete()
+                print(f"Deleted old queued task: {old_task.id}")
+    except Exception as e:
+        print(f"Cleanup queued error: {e}")
+
+
 def build_goal(task_type: str, config: dict) -> str:
     niche = config.get("niche", "")
     city = config.get("city", "")
@@ -164,20 +167,22 @@ Compile a structured report."""
         return f"Go to {url}\n{goal}" if url else goal
 
 
-# ============================================================
-# Main
-# ============================================================
 async def main():
     print("Assix browser-use runner starting...")
+
+    # Clean up stuck running tasks
     cleanup_stuck_tasks()
 
-    all_tasks = db.collection("assix_tasks").where("status", "==", "queued").limit(5).get()
+    # Keep only newest queued task, delete old ones
+    cleanup_old_queued()
+
+    # Find the queued task
+    all_tasks = db.collection("assix_tasks").where("status", "==", "queued").limit(1).get()
     if not all_tasks:
         print("No pending tasks. Exiting.")
         return
 
-    task_doc = sorted(all_tasks, key=lambda d: d.to_dict().get("createdAt", ""))[0]
-    task = task_doc.to_dict()
+    task = all_tasks[0].to_dict()
     task_id = task["taskId"]
     task_type = task["taskType"]
     config = task.get("config", {})
@@ -214,7 +219,7 @@ async def main():
         final_result = history.final_result() or ""
 
         await log(task_id, f"Agent finished. Success: {success}", "success" if success else "warning")
-        await log(task_id, f"Result preview: {final_result[:300]}")
+        await log(task_id, f"Result: {final_result[:300]}")
 
         is_scraping = task_type in ["google_maps_scrape", "pages_jaunes_scrape"]
         results = parse_results(final_result) if is_scraping else []
