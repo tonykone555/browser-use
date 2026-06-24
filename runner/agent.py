@@ -8,7 +8,7 @@ from urllib.parse import quote
 import firebase_admin
 from firebase_admin import credentials, firestore
 from browser_use import Agent
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI
 
 if not firebase_admin._apps:
     cred = credentials.Certificate({
@@ -169,14 +169,9 @@ Compile a structured report."""
 
 async def main():
     print("Assix browser-use runner starting...")
-
-    # Clean up stuck running tasks
     cleanup_stuck_tasks()
-
-    # Keep only newest queued task, delete old ones
     cleanup_old_queued()
 
-    # Find the queued task
     all_tasks = db.collection("assix_tasks").where("status", "==", "queued").limit(1).get()
     if not all_tasks:
         print("No pending tasks. Exiting.")
@@ -199,18 +194,17 @@ async def main():
     goal = build_goal(task_type, config)
     await log(task_id, "Agent starting...")
 
-    llm = ChatGroq(
-        model="llama-3.3-70b-versatile",
-        api_key=os.environ["GROQ_API_KEY"],
+    llm = ChatGoogleGenerativeAI(
+        model="gemini-2.0-flash",
+        google_api_key=os.environ["GEMINI_API_KEY"],
         temperature=0,
     )
 
     agent = Agent(
-    task=goal,
-    llm=llm,
-    use_vision=True,
-)
-
+        task=goal,
+        llm=llm,
+        use_vision=False,
+    )
 
     try:
         await log(task_id, "Browser-use agent running...")
