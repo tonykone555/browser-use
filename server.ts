@@ -27,6 +27,23 @@ const db = getFirestore();
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const GROQ_MODEL = 'qwen/qwen3-27b';
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
+const GITHUB_REPO = 'tonykone555/Assix';
+
+// Trigger GitHub Actions instantly
+const triggerGitHubActions = async () => {
+  if (!GITHUB_TOKEN) return;
+  try {
+    await axios.post(
+      `https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/browser-agent.yml/dispatches`,
+      { ref: 'main' },
+      { headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' } }
+    );
+    console.log('GitHub Actions triggered');
+  } catch (e: any) {
+    console.log('GitHub trigger failed:', e.message);
+  }
+};
 
 const callGroq = async (messages: { role: string; content: string }[], retries = 3): Promise => {
   if (!GROQ_API_KEY) return 'GROQ_API_KEY not configured.';
@@ -174,7 +191,7 @@ app.get('/api/task/:taskId/live', async (req, res) => {
 });
 
 app.get('/debug/test', async (req, res) => {
-  try { await db.collection('assix_tasks').limit(1).get(); res.json({ success: true, mode: 'github-actions', groq: !!GROQ_API_KEY }); }
+  try { await db.collection('assix_tasks').limit(1).get(); res.json({ success: true, mode: 'github-actions', groq: !!GROQ_API_KEY, github: !!GITHUB_TOKEN }); }
   catch (e: any) { res.json({ success: false, error: e.message }); }
 });
 
@@ -182,8 +199,14 @@ app.post('/api/task/start', async (req, res) => {
   try {
     const { taskType, config = {}, label } = req.body;
     const taskId = uuidv4();
-    await db.collection('assix_tasks').doc(taskId).set({ taskId, taskType, label: label || taskType, config, status: 'queued', progress: 0, total: config.maxLeads || config.targets?.length || 10, createdAt: new Date().toISOString(), runner: 'github-actions' });
-    await logAction(taskId, 'Task queued — GitHub runner picks up within 2 minutes');
+    await db.collection('assix_tasks').doc(taskId).set({
+      taskId, taskType, label: label || taskType, config,
+      status: 'queued', progress: 0,
+      total: config.maxLeads || config.targets?.length || 10,
+      createdAt: new Date().toISOString(), runner: 'github-actions',
+    });
+    await logAction(taskId, 'Task queued — triggering GitHub runner...');
+    await triggerGitHubActions(); // INSTANT TRIGGER
     res.json({ taskId });
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
@@ -192,8 +215,13 @@ app.post('/api/task/dynamic', async (req, res) => {
   try {
     const { goal, context, url } = req.body;
     const taskId = uuidv4();
-    await db.collection('assix_tasks').doc(taskId).set({ taskId, taskType: 'dynamic', label: `AI: ${goal.slice(0, 40)}`, config: { goal, context, url }, status: 'queued', progress: 0, total: 10, createdAt: new Date().toISOString(), runner: 'github-actions' });
-    await logAction(taskId, 'Task queued — GitHub runner picks up within 2 minutes');
+    await db.collection('assix_tasks').doc(taskId).set({
+      taskId, taskType: 'dynamic', label: `AI: ${goal.slice(0, 40)}`,
+      config: { goal, context, url }, status: 'queued', progress: 0, total: 10,
+      createdAt: new Date().toISOString(), runner: 'github-actions',
+    });
+    await logAction(taskId, 'Task queued — triggering GitHub runner...');
+    await triggerGitHubActions(); // INSTANT TRIGGER
     res.json({ taskId });
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
@@ -291,6 +319,21 @@ app.post('/api/leads/push-close-batch', async (req, res) => {
 app.get('/api/sessions/all', async (req, res) => {
   try { const s = await db.collection('assix_sessions').get(); res.json(s.docs.map(d => ({ platform: d.id, savedAt: d.data()?.savedAt }))); }
   catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/scrape/universal', async (req, res) => {
+  try {
+    const { url, extract } = req.body;
+    const taskId = uuidv4();
+    await db.collection('assix_tasks').doc(taskId).set({
+      taskId, taskType: 'universal_scrape', label: `Scrape: ${url.slice(0, 40)}`,
+      config: { url, extract }, status: 'queued', progress: 0, total: 10,
+      createdAt: new Date().toISOString(),
+    });
+    await logAction(taskId, 'Task queued — triggering GitHub runner...');
+    await triggerGitHubActions();
+    res.json({ taskId });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
 const publicDir = path.join(process.cwd(), 'public');
