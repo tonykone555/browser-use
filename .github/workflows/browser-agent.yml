@@ -1,0 +1,39 @@
+name: Assix Browser Agent
+
+on:
+  schedule:
+    - cron: '*/2 * * * *'
+  workflow_dispatch:
+
+jobs:
+  run-agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
+      FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY }}
+      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      BROWSER_USE_API_KEY: ${{ secrets.BROWSER_USE_API_KEY }}
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        working-directory: runner
+        run: pip install -r requirements.txt
+
+      - name: Install Playwright browsers
+        working-directory: runner
+        run: python -m playwright install chromium
+
+      - name: Run agent
+        working-directory: runner
+        run: python agent.py
