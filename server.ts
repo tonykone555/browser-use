@@ -1,348 +1,837 @@
-import express from 'express';
-import cors from 'cors';
-import { WebSocketServer, WebSocket } from 'ws';
-import { v4 as uuidv4 } from 'uuid';
-import multer from 'multer';
-import axios from 'axios';
-import http from 'http';
-import { initializeApp, getApps, cert } from 'firebase-admin/app';
-import { getFirestore } from 'firebase-admin/firestore';
-import path from 'path';
-import fs from 'fs';
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ASSIX.</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#080808;color:#F5F5F5;font-family:'Space Grotesk',sans-serif}
+::-webkit-scrollbar{width:3px}
+::-webkit-scrollbar-thumb{background:#2A2A2A;border-radius:2px}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+.fade{animation:fadeIn .2s ease}
+button{cursor:pointer;font-family:'Space Grotesk',sans-serif}
+input,select,textarea{font-family:'Space Grotesk',sans-serif;outline:none}
+#app{display:flex;flex-direction:column;height:100vh;overflow:hidden}
+#nav{display:flex;align-items:center;justify-content:space-between;padding:12px 20px;border-bottom:1px solid #1A1A1A;flex-shrink:0}
+#body{display:flex;flex:1;overflow:hidden;position:relative}
+#left{width:210px;border-right:1px solid #1A1A1A;display:flex;flex-direction:column;padding:16px 0;flex-shrink:0;overflow:hidden;transition:width .25s ease}
+#left.closed{width:0;padding:0;border:none}
+#main{flex:1;display:flex;flex-direction:column;overflow:hidden;position:relative}
+#right{width:152px;border-left:1px solid #1A1A1A;display:flex;flex-direction:column;padding:16px 0;flex-shrink:0;overflow:hidden;transition:width .25s ease}
+#right.closed{width:0;padding:0;border:none}
+.brand{font-weight:700;font-size:14px;letter-spacing:.14em}
+.brand span{color:#6366F1}
+.nav-link{font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:#52525B;cursor:pointer;transition:color .15s}
+.nav-link:hover,.nav-link.active{color:#F5F5F5}
+.status-pill{font-size:9px;border-radius:20px;padding:4px 10px;letter-spacing:.08em}
+.btn-new{background:#6366F1;color:white;font-size:10px;font-weight:700;letter-spacing:.06em;padding:6px 14px;border-radius:20px;border:none}
+.btn-new:hover{background:#5254cc}
+.lbl{font-size:9px;letter-spacing:.14em;text-transform:uppercase;color:#52525B}
+.task-item{padding:9px 14px;cursor:pointer;border-left:2px solid transparent;margin-bottom:1px;transition:background .15s}
+.task-item:hover{background:#0F0F0F}
+.task-item.active{border-left-color:#6366F1;background:#0F0F0F}
+.task-dot{width:6px;height:6px;border-radius:50%;flex-shrink:0}
+.progress-bar{height:1px;background:#1A1A1A;overflow:hidden;margin-top:3px}
+.progress-fill{height:100%;background:#6366F1;transition:width .5s}
+.quick-item{padding:7px 14px;font-size:11px;color:#52525B;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:color .15s}
+.quick-item:hover{color:#F5F5F5}
+.divider{height:1px;background:#1A1A1A;margin:12px 0}
+.toggle-left{position:absolute;left:210px;top:50%;transform:translateY(-50%);z-index:20;width:16px;height:40px;background:#141414;border:1px solid #2A2A2A;border-left:none;border-radius:0 6px 6px 0;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:left .25s ease;font-size:8px;color:#52525B}
+.toggle-left.closed{left:0}
+.toggle-right{position:absolute;right:152px;top:50%;transform:translateY(-50%);z-index:20;width:16px;height:40px;background:#141414;border:1px solid #2A2A2A;border-right:none;border-radius:6px 0 0 6px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:right .25s ease;font-size:8px;color:#52525B}
+.toggle-right.closed{right:0}
+#task-header{padding:12px 20px;border-bottom:1px solid #1A1A1A;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
+.btn-sm{background:transparent;border:1px solid #2A2A2A;color:#52525B;font-size:9px;letter-spacing:.1em;padding:5px 12px;border-radius:20px}
+.btn-sm:hover{color:#F5F5F5;border-color:#52525B}
+#metrics{display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid #1A1A1A;flex-shrink:0}
+.metric{padding:10px 16px;border-right:1px solid #1A1A1A}
+.metric:last-child{border-right:none}
+.metric-val{font-size:13px;font-weight:700;margin-top:2px;text-transform:uppercase;letter-spacing:.04em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+#captcha-bar{padding:7px 20px;border-bottom:1px solid #F59E0B22;display:flex;align-items:center;justify-content:space-between;background:#F59E0B08;display:none}
+#captcha-bar.show{display:flex}
+.btn-resolve{background:#F59E0B;color:#080808;border:none;font-size:9px;font-weight:700;letter-spacing:.08em;padding:4px 12px;border-radius:20px}
+#tab-content{flex:1;overflow:hidden;display:flex;flex-direction:column;position:relative}
+.tab-panel{display:none;flex:1;flex-direction:column;overflow:hidden}
+.tab-panel.active{display:flex}
+.tab-scroll{flex:1;overflow-y:auto;padding:14px 20px 70px}
+#live-box{flex:1;margin:14px 20px 0;border:1px solid #6366F1;border-radius:4px;overflow:hidden;position:relative;background:#0F0F0F;min-height:0;transition:border-color .3s}
+#live-box.captcha{border-color:#F59E0B}
+#live-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:none}
+#live-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;color:#52525B;letter-spacing:.1em;text-align:center}
+#live-footer{position:absolute;bottom:0;left:0;right:0;padding:6px 10px;background:#0A0A0A;border-top:1px solid #1A1A1A;display:flex;align-items:center;gap:14px;z-index:3;font-size:9px;color:#52525B;letter-spacing:.08em}
+#log-box{height:120px;margin:10px 20px 60px;border:1px solid #1A1A1A;border-radius:4px;display:flex;flex-direction:column;overflow:hidden;flex-shrink:0}
+#log-inner{flex:1;overflow-y:auto;padding:8px 10px;font-family:'JetBrains Mono',monospace}
+.log-line{display:flex;gap:10px;margin-bottom:3px;font-size:10px;animation:fadeIn .2s ease}
+.log-time{color:#2A2A2A;flex-shrink:0}
+#console-box{flex:1;display:flex;flex-direction:column;margin:14px 20px 60px;border:1px solid #1A1A1A;border-radius:4px;overflow:hidden}
+#chat-inner{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+.msg{display:flex;flex-direction:column;animation:fadeIn .2s ease}
+.msg.user{align-items:flex-end}
+.msg.agent{align-items:flex-start}
+.bubble{max-width:75%;padding:8px 12px;border-radius:4px;font-size:12px;line-height:1.6;white-space:pre-wrap}
+.bubble.user{background:#6366F1;color:white}
+.bubble.agent{background:#0F0F0F;color:#C4C4C4;border:1px solid #1A1A1A}
+#attach-bar{padding:6px 14px;border-top:1px solid #1A1A1A;display:none;flex-wrap:wrap;gap:6px}
+#attach-bar.show{display:flex}
+.attach-chip{background:#141414;border:1px solid #2A2A2A;border-radius:4px;padding:4px 8px;font-size:10px;color:#52525B;display:flex;align-items:center;gap:6px}
+#input-row{padding:10px 14px;border-top:1px solid #1A1A1A;display:flex;gap:6px;align-items:center}
+.btn-upload{background:transparent;border:1px solid #2A2A2A;color:#52525B;font-size:14px;width:32px;height:32px;border-radius:4px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+#chat-input{flex:1;background:#0F0F0F;border:1px solid #2A2A2A;border-radius:4px;padding:8px 12px;color:#F5F5F5;font-size:12px}
+.btn-send{background:#F5F5F5;color:#080808;border:none;font-size:9px;font-weight:700;letter-spacing:.08em;padding:8px 14px;border-radius:4px;flex-shrink:0}
+.card{background:#0F0F0F;border:1px solid #1A1A1A;border-radius:4px;padding:14px 16px;margin-bottom:10px;animation:fadeIn .2s ease}
+.card.clickable{cursor:pointer}
+.card.clickable:hover{border-color:#2A2A2A}
+.card-title{font-size:12px;font-weight:700;letter-spacing:.04em;margin-bottom:2px}
+.card-sub{font-size:9px;color:#52525B;letter-spacing:.08em}
+.btn-outline{background:transparent;border:1px solid #2A2A2A;color:#52525B;font-size:9px;font-weight:700;letter-spacing:.08em;padding:5px 12px;border-radius:20px}
+.btn-outline:hover{color:#F5F5F5;border-color:#52525B}
+.btn-accent{background:transparent;border:1px solid #6366F1;color:#6366F1;font-size:9px;font-weight:700;letter-spacing:.08em;padding:5px 12px;border-radius:20px}
+.settings-card{background:#0F0F0F;border:1px solid #1A1A1A;border-radius:4px;padding:16px;margin-bottom:12px}
+.code-box{font-family:'JetBrains Mono',monospace;font-size:10px;color:#6366F1;background:#080808;padding:10px;border-radius:4px;margin-top:8px}
+#pill{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);z-index:50;background:#141414;border:1px solid #2A2A2A;border-radius:40px;padding:4px;display:flex;gap:2px;box-shadow:0 8px 32px rgba(0,0,0,.7)}
+.pill-btn{background:transparent;color:#52525B;border:none;font-size:9px;font-weight:700;letter-spacing:.1em;padding:9px 18px;border-radius:36px;transition:all .2s}
+.pill-btn.active{background:#F5F5F5;color:#080808}
+.agent-thumb{padding:8px 12px;cursor:pointer;border-left:2px solid transparent}
+.agent-thumb.active{border-left-color:#6366F1}
+.thumb-box{height:68px;background:#0F0F0F;border:1px solid #1A1A1A;border-radius:3px;margin-bottom:5px;display:flex;align-items:center;justify-content:center;position:relative;overflow:hidden;font-size:8px;color:#2A2A2A;letter-spacing:.08em}
+.thumb-box.active{border-color:#6366F1}
+.thumb-img{width:100%;height:100%;object-fit:cover;opacity:.8;display:none}
+#modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:100;display:none;align-items:center;justify-content:center}
+#modal-overlay.show{display:flex}
+#modal{background:#0F0F0F;border:1px solid #1A1A1A;border-radius:8px;padding:24px;width:420px;max-height:80vh;overflow-y:auto}
+.modal-title{font-size:13px;font-weight:700;letter-spacing:.08em}
+.field{margin-bottom:10px}
+.field-last{margin-bottom:14px}
+select,input[type=text],input[type=number],input[type=password],textarea{width:100%;background:#080808;border:1px solid #2A2A2A;color:#F5F5F5;padding:8px 12px;border-radius:4px;font-size:12px}
+.btn-start{flex:1;background:#6366F1;color:white;border:none;font-size:11px;font-weight:700;letter-spacing:.08em;padding:10px;border-radius:6px}
+.btn-cancel{background:transparent;border:1px solid #2A2A2A;color:#52525B;font-size:11px;font-weight:700;letter-spacing:.08em;padding:10px 16px;border-radius:6px}
+#report-overlay{position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:100;display:none;align-items:center;justify-content:center}
+#report-overlay.show{display:flex}
+#report-box{background:#0F0F0F;border:1px solid #1A1A1A;border-radius:8px;padding:24px;width:600px;max-height:80vh;display:flex;flex-direction:column}
+#report-content{flex:1;overflow-y:auto;font-size:12px;line-height:1.8;color:#C4C4C4;white-space:pre-wrap;font-family:'JetBrains Mono',monospace}
+/* SWIPE TO DELETE */
+.task-item-wrap{position:relative;overflow:hidden;margin-bottom:1px}
+.task-item-delete{position:absolute;right:0;top:0;bottom:0;width:56px;background:#EF4444;display:flex;align-items:center;justify-content:center;font-size:10px;color:white;font-weight:700;cursor:pointer;letter-spacing:.06em;transform:translateX(100%);transition:transform .2s}
+.task-item-wrap.swiped .task-item-delete{transform:translateX(0)}
+.task-item-wrap.swiped .task-item{transform:translateX(-56px)}
+.task-item{transition:background .15s, transform .2s}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="nav">
+    <div style="display:flex;align-items:center;gap:28px">
+      <span class="brand">ASSIX<span>.</span></span>
+      <span class="nav-link" onclick="setTab('tasks')">Tasks</span>
+      <span class="nav-link" onclick="setTab('history')">History</span>
+      <span class="nav-link" onclick="setTab('settings')">Settings</span>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div id="status-pill" class="status-pill" style="border:1px solid #F59E0B;color:#F59E0B">SERVER OFFLINE</div>
+      <button class="btn-new" onclick="openModal()">+ NEW TASK</button>
+    </div>
+  </div>
+  <div id="body">
+    <div id="left">
+      <div class="lbl" style="padding:0 14px;margin-bottom:8px">ACTIVE [<span id="active-count">0</span>]</div>
+      <div id="task-list" style="overflow-y:auto;flex:1"></div>
+      <div class="divider"></div>
+      <div class="lbl" style="padding:0 14px;margin-bottom:8px">QUICK TASKS</div>
+      <div id="quick-list"></div>
+    </div>
+    <div id="toggle-left" class="toggle-left" onclick="toggleLeft()">›</div>
+    <div id="main">
+      <div id="task-header">
+        <div>
+          <div class="lbl">VIEWING ACTIVE TASK</div>
+          <div id="task-title" style="font-size:14px;font-weight:700;letter-spacing:.08em;margin-top:2px">NO TASK SELECTED.</div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn-sm" onclick="stopActiveTask()">STOP</button>
+        </div>
+      </div>
+      <div id="metrics">
+        <div class="metric"><div class="lbl">PROGRESS</div><div class="metric-val" id="m-progress">0/0</div></div>
+        <div class="metric"><div class="lbl">STATUS</div><div class="metric-val" id="m-status">—</div></div>
+        <div class="metric"><div class="lbl">TYPE</div><div class="metric-val" id="m-type">—</div></div>
+        <div class="metric"><div class="lbl">CITY</div><div class="metric-val" id="m-city">—</div></div>
+      </div>
+      <div id="captcha-bar">
+        <span class="lbl" style="color:#F59E0B;animation:pulse 2s infinite">⚠ CAPTCHA DETECTED — ACTION REQUIRED</span>
+        <button class="btn-resolve" onclick="resolveCaptcha()">RESOLVE →</button>
+      </div>
+      <div id="tab-content">
+        <div id="panel-operator" class="tab-panel active">
+          <div id="live-box">
+            <div style="position:absolute;top:0;left:0;right:0;z-index:5;background:#1C1C1E;border-bottom:1px solid #2A2A2A;padding:6px 10px;display:flex;align-items:center;gap:8px">
+              <div style="display:flex;gap:5px;flex-shrink:0">
+                <div style="width:10px;height:10px;border-radius:50%;background:#FF5F57"></div>
+                <div style="width:10px;height:10px;border-radius:50%;background:#FEBC2E"></div>
+                <div style="width:10px;height:10px;border-radius:50%;background:#28C840"></div>
+              </div>
+              <div style="flex:1;background:#2A2A2A;border-radius:4px;padding:3px 8px;font-size:9px;color:#8E8E93;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="live-url">about:blank</div>
+              <div style="flex-shrink:0;font-size:9px;color:#52525B" id="live-task-name">NO TASK</div>
+            </div>
+            <img id="live-img" alt="live view" style="margin-top:28px"/>
+            <div id="live-empty" style="margin-top:28px">START A TASK TO SEE LIVE VIEW</div>
+            <div id="live-footer">
+              <span id="live-status">● IDLE</span>
+              <span id="live-prog">0/0</span>
+              <span id="live-countdown" style="display:none;color:#6366F1;animation:pulse 1s infinite"></span>
+              <span id="live-niche" style="margin-left:auto"></span>
+            </div>
+          </div>
+          <div id="log-box">
+            <div class="lbl" style="padding:6px 10px;border-bottom:1px solid #1A1A1A">LIVE LOG</div>
+            <div id="log-inner"><div style="font-size:10px;color:#52525B">Waiting for task logs...</div></div>
+          </div>
+        </div>
+        <div id="panel-console" class="tab-panel">
+          <div id="console-box">
+            <div style="padding:8px 14px;border-bottom:1px solid #1A1A1A;display:flex;justify-content:space-between;align-items:center">
+              <span class="lbl">AGENT CONSOLE</span>
+              <span style="color:#52525B;font-size:8px">TIP: type "do: goal" to start AI task</span>
+            </div>
+            <div id="chat-inner"></div>
+            <div id="attach-bar"></div>
+            <div id="input-row">
+              <input type="file" id="file-input" multiple style="display:none" onchange="handleFiles(this)"/>
+              <button class="btn-upload" onclick="document.getElementById('file-input').click()">↑</button>
+              <input id="chat-input" type="text" placeholder="Ask agent or type 'do: [goal]'..." onkeydown="if(event.key==='Enter')sendMsg()"/>
+              <button class="btn-send" onclick="sendMsg()">SEND</button>
+            </div>
+          </div>
+        </div>
+        <div id="panel-history" class="tab-panel">
+          <div class="tab-scroll" id="history-inner"></div>
+        </div>
+        <div id="panel-tasks" class="tab-panel">
+          <div class="tab-scroll" id="tasks-inner"></div>
+        </div>
+        <div id="panel-settings" class="tab-panel">
+          <div class="tab-scroll">
+            <div class="settings-card">
+              <div class="lbl" style="margin-bottom:8px">SERVER CONNECTION</div>
+              <div style="font-size:11px;color:#52525B;margin-bottom:8px">Current server URL configured in this file.</div>
+              <div class="code-box" id="settings-url"></div>
+              <div id="settings-status" style="margin-top:8px;font-size:10px;color:#F59E0B">Checking...</div>
+            </div>
+            <div class="settings-card">
+              <div class="lbl" style="margin-bottom:8px">SESSIONS</div>
+              <div style="font-size:11px;color:#52525B;margin-bottom:12px">Saved platform logins</div>
+              <button class="btn-outline" onclick="viewSessions()">VIEW SESSIONS</button>
+            </div>
+          </div>
+        </div>
+        <div id="pill">
+          <button class="pill-btn active" onclick="setTab('operator')">LIVE VIEW</button>
+          <button class="pill-btn" onclick="setTab('console')">CONSOLE</button>
+        </div>
+      </div>
+    </div>
+    <div id="toggle-right" class="toggle-right" onclick="toggleRight()">‹</div>
+    <div id="right">
+      <div class="lbl" style="padding:0 12px;margin-bottom:8px">ALL AGENTS</div>
+      <div id="agent-list"></div>
+    </div>
+  </div>
+</div>
 
-if (getApps().length === 0) {
-  if (process.env.FIREBASE_PRIVATE_KEY) {
-    initializeApp({
-      credential: cert({
-        projectId: process.env.FIREBASE_PROJECT_ID,
-        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-        privateKey: process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n'),
-      }),
-    });
-  } else {
-    initializeApp();
+<!-- NEW TASK MODAL -->
+<div id="modal-overlay" onclick="if(event.target===this)closeModal()">
+  <div id="modal">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px">
+      <span class="modal-title">NEW TASK</span>
+      <span onclick="closeModal()" style="cursor:pointer;color:#52525B;font-size:16px">×</span>
+    </div>
+    <div class="field-last">
+      <div class="lbl" style="margin-bottom:6px">TASK TYPE</div>
+      <select id="task-type-select" onchange="renderTaskFields()">
+        <option value="google_maps_scrape">Google Maps Scrape</option>
+        <option value="pages_jaunes_scrape">Pages Jaunes Scrape</option>
+        <option value="instagram_dm">Instagram DM Campaign</option>
+        <option value="whatsapp_outreach">WhatsApp Outreach</option>
+        <option value="market_research">Market Research</option>
+        <option value="dynamic">Custom Task (AI Planned)</option>
+      </select>
+    </div>
+    <div id="task-fields"></div>
+    <div style="display:flex;gap:8px;margin-top:4px">
+      <button class="btn-start" onclick="startTask()">START TASK →</button>
+      <button class="btn-cancel" onclick="closeModal()">CANCEL</button>
+    </div>
+  </div>
+</div>
+
+<!-- REPORT MODAL -->
+<div id="report-overlay" onclick="if(event.target===this)closeReport()">
+  <div id="report-box">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <span style="font-size:12px;font-weight:700;letter-spacing:.08em">INTELLIGENCE REPORT</span>
+      <div style="display:flex;gap:8px">
+        <button class="btn-outline" onclick="navigator.clipboard.writeText(document.getElementById('report-content').textContent)">COPY</button>
+        <span onclick="closeReport()" style="cursor:pointer;color:#52525B;font-size:16px">×</span>
+      </div>
+    </div>
+    <div id="report-content"></div>
+  </div>
+</div>
+
+<script>
+const CONFIG = {
+  serverUrl: 'https://assix.onrender.com',
+  wsUrl: 'wss://assix.onrender.com',
+  niches: ['plumber','electrician','roofer','locksmith','salon','nail salon','cleaning service','restaurant','landscaper','painter','traiteur'],
+  cities_en: ['Toronto','Mississauga','Brampton','Hamilton','Ottawa','London ON','Kitchener','Windsor','Calgary','Edmonton','Vancouver','Surrey'],
+  cities_fr: ['Montreal','Quebec City','Laval','Longueuil','Gatineau','Sherbrooke','Paris','Lyon','Marseille','Bordeaux','Lille','Nice'],
+  quickTasks: [
+    {id:'google_maps_scrape',label:'Google Maps Scrape'},
+    {id:'pages_jaunes_scrape',label:'Pages Jaunes Scrape'},
+    {id:'instagram_dm',label:'Instagram DM'},
+    {id:'whatsapp_outreach',label:'WhatsApp Outreach'},
+    {id:'market_research',label:'Market Research'},
+    {id:'dynamic',label:'Custom AI Task'},
+  ]
+}
+
+let tasks = []
+let activeTask = null
+let currentTab = 'operator'
+let leftOpen = true
+let rightOpen = true
+let ws = null
+let screenshots = {}
+let attachments = []
+let chat = [{ role:'agent', msg:'Assix Agent ready. Start a task or ask me anything.' }]
+let taskConfig = {}
+let serverOk = false
+// Local dismissed task IDs — persists across renders
+let dismissedTasks = new Set(JSON.parse(localStorage.getItem('dismissedTasks')||'[]'))
+
+const statusColor = s => s==='running'||s==='active'?'#10B981':s==='paused_captcha'?'#F59E0B':s==='error'?'#EF4444':s==='queued'?'#6366F1':'#52525B'
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('settings-url').textContent = CONFIG.serverUrl
+  renderQuickList()
+  renderChat()
+  pingServer()
+  fetchTasks()
+  setInterval(fetchTasks, 10000)
+  setInterval(pingServer, 30000)
+})
+
+async function pingServer() {
+  try {
+    await fetch(CONFIG.serverUrl+'/health')
+    serverOk = true
+    const pill = document.getElementById('status-pill')
+    const active = tasks.filter(t=>t.status==='running'||t.status==='paused_captcha').length
+    pill.style.color='#10B981'; pill.style.borderColor='#10B981'
+    pill.textContent = active > 0 ? `LIVE — ${active} ACTIVE` : 'LIVE'
+    document.getElementById('settings-status').style.color='#10B981'
+    document.getElementById('settings-status').textContent='✓ Connected'
+  } catch(e) {
+    serverOk = false
+    const pill = document.getElementById('status-pill')
+    pill.style.color='#F59E0B'; pill.style.borderColor='#F59E0B'
+    pill.textContent='SERVER OFFLINE'
+    document.getElementById('settings-status').style.color='#F59E0B'
+    document.getElementById('settings-status').textContent='✗ Not connected'
   }
 }
-const db = getFirestore();
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
-const GROQ_MODEL = 'qwen/qwen3-27b';
-const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
-const GITHUB_REPO = 'tonykone555/Assix';
-
-// Trigger GitHub Actions instantly
-const triggerGitHubActions = async () => {
-  if (!GITHUB_TOKEN) return;
+async function fetchTasks() {
   try {
-    await axios.post(
-      `https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/browser-agent.yml/dispatches`,
-      { ref: 'main' },
-      { headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' } }
-    );
-    console.log('GitHub Actions triggered');
-  } catch (e: any) {
-    console.log('GitHub trigger failed:', e.message);
-  }
-};
+    const res = await fetch(CONFIG.serverUrl+'/api/tasks/all')
+    const all = await res.json()
+    // Filter out locally dismissed tasks
+    tasks = all.filter(t => !dismissedTasks.has(t.taskId))
+    if (!activeTask && tasks.length > 0) selectTask(tasks[0])
+    renderTaskList()
+    renderAgentList()
+    renderHistory()
+    renderAllTasks()
+    document.getElementById('active-count').textContent = tasks.filter(t=>t.status==='running'||t.status==='paused_captcha'||t.status==='queued').length
+  } catch(e) {}
+}
 
-const callGroq = async (messages: { role: string; content: string }[], retries = 3): Promise => {
-  if (!GROQ_API_KEY) return 'GROQ_API_KEY not configured.';
-  for (let attempt = 0; attempt < retries; attempt++) {
+let screenshotPollInterval = null
+let lastLogCount = 0
+
+async function startScreenshotPolling(taskId) {
+  if (screenshotPollInterval) clearInterval(screenshotPollInterval)
+  lastLogCount = 0
+  screenshotPollInterval = setInterval(async () => {
+    if (!activeTask) return
+    const tid = activeTask.taskId
     try {
-      const res = await axios.post(
-        'https://api.groq.com/openai/v1/chat/completions',
-        { model: GROQ_MODEL, messages, max_tokens: 500, temperature: 0.3 },
-        { headers: { Authorization: `Bearer ${GROQ_API_KEY}`, 'Content-Type': 'application/json' } }
-      );
-      return res.data.choices[0]?.message?.content || '';
-    } catch (e: any) {
-      const msg = e.response?.data?.error?.message || e.message || '';
-      if (msg.includes('Rate limit') && attempt < retries - 1) {
-        await new Promise(r => setTimeout(r, (attempt + 1) * 8000));
-        continue;
+      const res = await fetch(CONFIG.serverUrl+'/api/task/'+tid+'/screenshot')
+      const data = await res.json()
+      if (data && data.screenshot) {
+        try {
+          const byteChars = atob(data.screenshot)
+          const byteArr = new Uint8Array(byteChars.length)
+          for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i)
+          const blob = new Blob([byteArr], {type:'image/jpeg'})
+          const blobUrl = URL.createObjectURL(blob)
+          const img = document.getElementById('live-img')
+          if (img._blobUrl) URL.revokeObjectURL(img._blobUrl)
+          img._blobUrl = blobUrl
+          img.src = blobUrl
+          img.style.display = 'block'
+          document.getElementById('live-empty').style.display = 'none'
+        } catch(e) {
+          const img = document.getElementById('live-img')
+          img.src = 'data:image/jpeg;base64,'+data.screenshot
+          img.style.display = 'block'
+          document.getElementById('live-empty').style.display = 'none'
+        }
       }
-      return 'Groq error: ' + msg;
+      const logRes = await fetch(CONFIG.serverUrl+'/api/task/'+tid+'/logs/live')
+      const logData = await logRes.json()
+      if (logData && logData.logs && logData.logs.length > lastLogCount) {
+        const inner = document.getElementById('log-inner')
+        if (lastLogCount === 0) inner.innerHTML = ''
+        const newLogs = logData.logs.slice(lastLogCount)
+        newLogs.forEach(log => {
+          const color = log.type==='success'?'#10B981':log.type==='warning'?'#F59E0B':log.type==='error'?'#EF4444':'#52525B'
+          const line = document.createElement('div')
+          line.className = 'log-line fade'
+          line.innerHTML = '<span class="log-time">'+log.time+'</span><span style="color:'+color+'">'+log.msg+'</span>'
+          inner.appendChild(line)
+          inner.scrollTop = inner.scrollHeight
+        })
+        lastLogCount = logData.logs.length
+      }
+      const statusRes = await fetch(CONFIG.serverUrl+'/api/task/'+tid+'/status')
+      const statusData = await statusRes.json()
+      if (statusData && statusData.task) {
+        const t = statusData.task
+        document.getElementById('m-status').textContent = (t.status||'').toUpperCase()
+        document.getElementById('m-progress').textContent = (t.progress||0)+'/'+(t.total||0)
+        document.getElementById('live-status').textContent = '● '+(t.status||'IDLE').toUpperCase()
+        document.getElementById('live-prog').textContent = (t.progress||0)+'/'+(t.total||0)
+        if (t.status==='complete'||t.status==='error'||t.status==='stopped') {
+          clearInterval(screenshotPollInterval)
+          screenshotPollInterval = null
+          lastLogCount = 0
+          fetchTasks()
+        }
+      }
+    } catch(e) {}
+  }, 2500)
+}
+
+function stopScreenshotPolling() {
+  if (screenshotPollInterval) { clearInterval(screenshotPollInterval); screenshotPollInterval = null; lastLogCount = 0 }
+}
+
+function selectTask(task) {
+  activeTask = task
+  document.querySelectorAll('.task-item').forEach(el => el.classList.toggle('active', el.dataset.id === task.taskId))
+  document.querySelectorAll('.agent-thumb').forEach(el => el.classList.toggle('active', el.dataset.id === task.taskId))
+  if (task.status === 'running' || task.status === 'paused_captcha') { startScreenshotPolling(task.taskId); stopCountdown() }
+  else if (task.status === 'queued') { stopScreenshotPolling(); startCountdown() }
+  else { stopScreenshotPolling(); stopCountdown() }
+  document.getElementById('task-title').textContent = (task.label||task.taskType).toUpperCase()+'.'
+  document.getElementById('m-progress').textContent = `${task.progress||0}/${task.total||0}`
+  document.getElementById('m-status').textContent = (task.status||'—').toUpperCase()
+  document.getElementById('m-type').textContent = (task.taskType||'—').replace(/_/g,' ').toUpperCase()
+  document.getElementById('m-city').textContent = (task.config?.city||'—').toUpperCase()
+  document.getElementById('live-task-name').textContent = (task.label||task.taskType).toUpperCase()+' — LIVE'
+  document.getElementById('live-status').textContent = '● '+(task.status||'IDLE').toUpperCase()
+  document.getElementById('live-status').style.color = statusColor(task.status)
+  document.getElementById('live-prog').textContent = `${task.progress||0}/${task.total||0}`
+  document.getElementById('live-niche').textContent = [task.config?.niche?.toUpperCase(), task.config?.city?.toUpperCase()].filter(Boolean).join(' · ')
+  document.getElementById('live-box').classList.toggle('captcha', task.status==='paused_captcha')
+  document.getElementById('captcha-bar').classList.toggle('show', task.status==='paused_captcha')
+  if (screenshots[task.taskId]) showScreenshot(screenshots[task.taskId])
+  if (task.status==='running'||task.status==='paused_captcha') connectWS(task.taskId)
+}
+
+function showScreenshot(src) {
+  const img = document.getElementById('live-img')
+  img.src = src; img.style.display = 'block'
+  document.getElementById('live-empty').style.display = 'none'
+}
+
+function connectWS(taskId) {
+  if (ws) ws.close()
+  try {
+    ws = new WebSocket(CONFIG.wsUrl)
+    ws.onopen = () => ws.send(JSON.stringify({type:'subscribe',taskId}))
+    ws.onmessage = e => {
+      try {
+        const data = JSON.parse(e.data)
+        if (data.type==='log') addLog(data)
+        if (data.type==='screenshot') {
+          screenshots[data.taskId] = 'data:image/jpeg;base64,'+data.imageBase64
+          if (activeTask?.taskId===data.taskId) showScreenshot(screenshots[data.taskId])
+          const thumbImg = document.querySelector(`.agent-thumb[data-id="${data.taskId}"] .thumb-img`)
+          if (thumbImg) { thumbImg.src = screenshots[data.taskId]; thumbImg.style.display='block' }
+        }
+        if (data.type==='status' && activeTask?.taskId===data.taskId) {
+          activeTask = {...activeTask,...data}
+          document.getElementById('m-progress').textContent = `${data.progress||0}/${data.total||0}`
+          document.getElementById('live-prog').textContent = `${data.progress||0}/${data.total||0}`
+        }
+        if (data.type==='captcha') {
+          document.getElementById('captcha-bar').classList.add('show')
+          document.getElementById('live-box').classList.add('captcha')
+          if (data.screenshotBase64) showScreenshot('data:image/jpeg;base64,'+data.screenshotBase64)
+        }
+        if (data.type==='complete') {
+          document.getElementById('captcha-bar').classList.remove('show')
+          document.getElementById('live-box').classList.remove('captcha')
+          fetchTasks()
+        }
+      } catch(e) {}
     }
+    ws.onerror = () => {}
+    ws.onclose = () => {}
+  } catch(e) {}
+}
+
+function addLog(log) {
+  const inner = document.getElementById('log-inner')
+  const line = document.createElement('div')
+  line.className = 'log-line fade'
+  const color = log.type==='success'?'#10B981':log.type==='warning'?'#F59E0B':log.type==='error'?'#EF4444':'#52525B'
+  line.innerHTML = `<span class="log-time">${log.time}</span><span style="color:${color}">${log.msg}</span>`
+  inner.appendChild(line)
+  inner.scrollTop = inner.scrollHeight
+}
+
+// ============================================================
+// Swipe to delete + X button — works offline
+// ============================================================
+function dismissTask(taskId) {
+  // Remove from local list immediately
+  dismissedTasks.add(taskId)
+  localStorage.setItem('dismissedTasks', JSON.stringify([...dismissedTasks]))
+  tasks = tasks.filter(t => t.taskId !== taskId)
+  if (activeTask?.taskId === taskId) {
+    stopScreenshotPolling()
+    activeTask = null
+    document.getElementById('task-title').textContent = 'NO TASK SELECTED.'
+    document.getElementById('live-img').style.display = 'none'
+    document.getElementById('live-empty').style.display = 'flex'
   }
-  return 'Groq error: max retries reached';
-};
+  // Try to update server in background — don't wait
+  fetch(CONFIG.serverUrl+'/api/task/'+taskId, {method:'DELETE'}).catch(()=>{})
+  renderTaskList()
+  renderAgentList()
+  document.getElementById('active-count').textContent = tasks.filter(t=>t.status==='running'||t.status==='paused_captcha'||t.status==='queued').length
+}
 
-const callLLM = async (systemPrompt: string, userPrompt: string): Promise =>
-  callGroq([{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }]);
+function renderTaskList() {
+  const el = document.getElementById('task-list')
+  const visible = tasks.slice(0, 20)
+  el.innerHTML = visible.map(t => `
+    <div class="task-item-wrap" data-id="${t.taskId}" id="wrap-${t.taskId}">
+      <div class="task-item ${activeTask?.taskId===t.taskId?'active':''}" data-id="${t.taskId}"
+        onclick="selectTask(${JSON.stringify(t).replace(/"/g,'&quot;')})"
+        ontouchstart="touchStart(event,'${t.taskId}')"
+        ontouchmove="touchMove(event,'${t.taskId}')"
+        ontouchend="touchEnd(event,'${t.taskId}')">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
+          <span style="font-size:11px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:110px">${t.label||t.taskType}</span>
+          <div style="display:flex;align-items:center;gap:6px">
+            <div class="task-dot" style="background:${statusColor(t.status)};box-shadow:${t.status==='running'?'0 0 5px #10B981':'none'}"></div>
+            <span onclick="event.stopPropagation();dismissTask('${t.taskId}')" style="color:#52525B;font-size:16px;cursor:pointer;line-height:1;padding:2px 4px" title="Remove">×</span>
+          </div>
+        </div>
+        <div class="lbl" style="margin-bottom:${t.total>0?4:0}px">${(t.taskType||'').replace(/_/g,' ')} · <span style="color:${statusColor(t.status)}">${t.status||''}</span></div>
+        ${t.total>0?`<div class="progress-bar"><div class="progress-fill" style="width:${t.progressPct||0}%;background:${t.status==='paused_captcha'?'#F59E0B':'#6366F1'}"></div></div>`:''}
+      </div>
+      <div class="task-item-delete" onclick="dismissTask('${t.taskId}')">DEL</div>
+    </div>
+  `).join('')
+}
 
-const callLLMChat = async (systemPrompt: string, messages: any[]): Promise =>
-  callGroq([
-    { role: 'system', content: systemPrompt },
-    ...messages.map(m => ({ role: m.role === 'agent' ? 'assistant' : 'user', content: m.msg || m.content || '' })),
-  ]);
+// Touch swipe logic
+let touchStartX = 0
+function touchStart(e, id) { touchStartX = e.touches[0].clientX }
+function touchMove(e, id) {
+  const dx = e.touches[0].clientX - touchStartX
+  if (dx < -40) document.getElementById('wrap-'+id)?.classList.add('swiped')
+  if (dx > 20) document.getElementById('wrap-'+id)?.classList.remove('swiped')
+}
+function touchEnd(e, id) {}
 
-const app = express();
-const server = http.createServer(app);
-const wss = new WebSocketServer({ server });
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+function renderQuickList() {
+  document.getElementById('quick-list').innerHTML = CONFIG.quickTasks.map(t =>
+    `<div class="quick-item" onclick="openModalWith('${t.id}')">${t.label}</div>`
+  ).join('')
+}
 
-const wsClients = new Map();
-const latestScreenshots = new Map();
-const taskLogs = new Map();
+function renderAgentList() {
+  document.getElementById('agent-list').innerHTML = tasks.slice(0,6).map(t => `
+    <div class="agent-thumb ${activeTask?.taskId===t.taskId?'active':''}" data-id="${t.taskId}" onclick="selectTask(${JSON.stringify(t).replace(/"/g,'&quot;')})">
+      <div class="thumb-box ${activeTask?.taskId===t.taskId?'active':''}">
+        <div style="position:absolute;top:4px;right:4px;width:5px;height:5px;border-radius:50%;background:${statusColor(t.status)}"></div>
+        ${screenshots[t.taskId]?`<img class="thumb-img" src="${screenshots[t.taskId]}" style="display:block"/>`:`<span>${(t.status||'').toUpperCase()}</span>`}
+      </div>
+      <div style="font-size:9px;font-weight:600;margin-bottom:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.label||t.taskType}</div>
+      <div style="font-size:8px;color:#52525B">${t.progress||0}/${t.total||0}</div>
+    </div>
+  `).join('')
+}
 
-app.use(cors());
-app.use(express.json({ limit: '50mb' }));
+function renderHistory() {
+  const completed = tasks.filter(t=>t.status==='complete')
+  const el = document.getElementById('history-inner')
+  if (completed.length===0) { el.innerHTML='<div class="lbl" style="margin-bottom:12px">COMPLETED TASKS [0]</div><div style="font-size:12px;color:#52525B;padding:40px 0;text-align:center">No completed tasks yet.</div>'; return }
+  el.innerHTML = `<div class="lbl" style="margin-bottom:12px">COMPLETED TASKS [${completed.length}]</div>` + completed.map(t => `
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+        <div><div class="card-title">${(t.label||t.taskType).toUpperCase()}</div><div class="card-sub">${(t.createdAt||'').slice(0,10)} · ${t.taskType} · ${t.config?.city||''}</div></div>
+        <div style="width:8px;height:8px;border-radius:50%;background:#10B981"></div>
+      </div>
+      <div style="font-size:11px;color:#52525B;margin-bottom:10px">${t.progress||0} items · ${t.config?.niche||t.config?.topic||''}</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <button class="btn-outline" onclick="exportCSV('${t.taskId}')">CSV EXPORT</button>
+        <button class="btn-outline" onclick="fetchReport('${t.taskId}')">VIEW REPORT</button>
+        ${(t.taskType==='google_maps_scrape'||t.taskType==='pages_jaunes_scrape')?`<button class="btn-accent" onclick="pushAllToClose()">PUSH TO CLOSE.IO</button>`:''}
+      </div>
+    </div>
+  `).join('')
+}
 
-wss.on('connection', (ws: WebSocket & { taskId?: string }) => {
-  ws.on('message', (data: string) => {
-    try {
-      const { type, taskId } = JSON.parse(data);
-      if (type === 'subscribe') { wsClients.set(taskId, ws); ws.taskId = taskId; }
-      if (type === 'unsubscribe') wsClients.delete(taskId);
-    } catch (e) {}
-  });
-  ws.on('close', () => { if (ws.taskId) wsClients.delete(ws.taskId); });
-});
+function renderAllTasks() {
+  const el = document.getElementById('tasks-inner')
+  if (tasks.length===0) { el.innerHTML='<div class="lbl" style="margin-bottom:12px">ALL TASKS [0]</div><div style="font-size:12px;color:#52525B;padding:40px 0;text-align:center">No tasks yet.</div>'; return }
+  el.innerHTML = `<div class="lbl" style="margin-bottom:12px">ALL TASKS [${tasks.length}]</div>` + tasks.map(t => `
+    <div class="card clickable" onclick="selectTask(${JSON.stringify(t).replace(/"/g,'&quot;')});setTab('operator')" style="border-color:${activeTask?.taskId===t.taskId?'#6366F1':'#1A1A1A'}">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+        <span class="card-title">${(t.label||t.taskType).toUpperCase()}</span>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:9px;color:${statusColor(t.status)};letter-spacing:.08em">${(t.status||'').toUpperCase()}</span>
+          <span onclick="event.stopPropagation();dismissTask('${t.taskId}')" style="color:#52525B;font-size:16px;cursor:pointer;padding:2px 4px">×</span>
+        </div>
+      </div>
+      <div class="card-sub">${(t.createdAt||'').slice(0,10)} · ${t.config?.city||''} · ${t.config?.niche||''}</div>
+      ${t.total>0?`<div style="margin-top:8px;height:1px;background:#1A1A1A;overflow:hidden"><div style="height:100%;width:${t.progressPct||0}%;background:#6366F1"></div></div>`:''}
+    </div>
+  `).join('')
+}
 
-const sendWS = (taskId: string, data: any) => {
-  const client = wsClients.get(taskId);
-  if (client && client.readyState === 1) client.send(JSON.stringify(data));
-};
+function renderChat() {
+  const el = document.getElementById('chat-inner')
+  el.innerHTML = chat.map(m => `
+    <div class="msg ${m.role}">
+      <div class="bubble ${m.role}">
+        ${m.role==='agent'?`<div class="lbl" style="margin-bottom:4px">ASSIX AGENT</div>`:''}
+        ${m.msg}
+      </div>
+    </div>
+  `).join('')
+  el.scrollTop = el.scrollHeight
+}
 
-setInterval(async () => {
-  for (const [taskId, ws] of wsClients.entries()) {
-    if (ws.readyState !== 1) continue;
-    try {
-      const doc = await db.collection('assix_tasks').doc(taskId).get();
-      const data = doc.data();
-      if (!data) continue;
-      if (data.latestScreenshot && data.latestScreenshot !== latestScreenshots.get(taskId)) {
-        latestScreenshots.set(taskId, data.latestScreenshot);
-        ws.send(JSON.stringify({ type: 'screenshot', taskId, imageBase64: data.latestScreenshot }));
-      }
-      ws.send(JSON.stringify({ type: 'status', taskId, progress: data.progress || 0, total: data.total || 0, progressPct: data.progressPct || 0, status: data.status }));
-      const existingLogs = taskLogs.get(taskId) || [];
-      const recentLogs = data.recentLogs || [];
-      if (recentLogs.length > existingLogs.length) {
-        const newLogs = recentLogs.slice(existingLogs.length);
-        taskLogs.set(taskId, recentLogs);
-        for (const log of newLogs) ws.send(JSON.stringify({ type: 'log', taskId, ...log }));
-      }
-      if (data.status === 'complete' || data.status === 'error') {
-        ws.send(JSON.stringify({ type: 'complete', taskId, results: { results: data.results || [] } }));
-      }
-    } catch (e) {}
-  }
-}, 2000);
-
-const logAction = async (taskId: string, msg: string, type = 'info') => {
-  const entry = { time: new Date().toLocaleTimeString('en-GB'), msg, type, timestamp: Date.now() };
-  try { await db.collection('assix_tasks').doc(taskId).collection('logs').add(entry); } catch (e) {}
-  sendWS(taskId, { type: 'log', taskId, ...entry });
-  const logs = taskLogs.get(taskId) || [];
-  logs.push(entry);
-  if (logs.length > 50) logs.shift();
-  taskLogs.set(taskId, logs);
-};
-
-const toCSV = (data: any[]) => {
-  if (!data || !data.length) return 'No data';
-  const headers = Object.keys(data[0]);
-  const rows = data.map(row => headers.map(h => { const val = row[h] ?? ''; return typeof val === 'string' && (val.includes(',') || val.includes('"')) ? `"${val.replace(/"/g, '""')}"` : val; }).join(','));
-  return [headers.join(','), ...rows].join('\n');
-};
-
-const pushToClose = async (lead: any) => {
-  if (!process.env.CLOSE_API_KEY) return { error: 'No Close API key' };
+async function sendMsg() {
+  const input = document.getElementById('chat-input')
+  const txt = input.value.trim()
+  if (!txt) return
+  chat.push({role:'user', msg:txt})
+  input.value = ''
+  renderChat()
+  chat.push({role:'agent', msg:'...'})
+  renderChat()
   try {
-    const res = await axios.post('https://api.close.com/api/v1/lead/', {
-      name: lead.businessName || lead.name || 'Business',
-      contacts: [{ name: lead.businessName || lead.name || 'Business', phones: lead.phone ? [{ phone: lead.phone, type: 'office' }] : [], emails: lead.email ? [{ email: lead.email, type: 'office' }] : [] }],
-      custom: { city: lead.city, sector: lead.sector, lead_type: lead.leadType, market: lead.market || 'english_ca' }
-    }, { auth: { username: process.env.CLOSE_API_KEY, password: '' } });
-    return { success: true, closeId: res.data.id };
-  } catch (e: any) { return { error: e.message }; }
-};
-
-app.get('/health', (req, res) => res.json({ status: 'ok', mode: 'github-actions', timestamp: Date.now() }));
-
-app.get('/api/task/:taskId/screenshot', async (req, res) => {
-  const { taskId } = req.params;
-  const memImg = latestScreenshots.get(taskId);
-  if (memImg) return res.json({ screenshot: memImg, timestamp: Date.now() });
-  try {
-    const doc = await db.collection('assix_tasks').doc(taskId).get();
-    const data = doc.data();
-    if (data?.latestScreenshot) { latestScreenshots.set(taskId, data.latestScreenshot); return res.json({ screenshot: data.latestScreenshot, timestamp: data.screenshotAt || Date.now() }); }
-  } catch (e) {}
-  res.json({ screenshot: null });
-});
-
-app.get('/api/task/:taskId/logs/live', async (req, res) => {
-  const { taskId } = req.params;
-  const memLogs = taskLogs.get(taskId);
-  if (memLogs && memLogs.length > 0) return res.json({ logs: memLogs });
-  try { const doc = await db.collection('assix_tasks').doc(taskId).get(); return res.json({ logs: doc.data()?.recentLogs || [] }); } catch (e) {}
-  res.json({ logs: [] });
-});
-
-app.get('/api/task/:taskId/live', async (req, res) => {
-  try {
-    const { taskId } = req.params;
-    const doc = await db.collection('assix_tasks').doc(taskId).get();
-    const task = doc.exists ? doc.data() : null;
-    res.json({ task, screenshot: latestScreenshots.get(taskId) || task?.latestScreenshot || null, logs: taskLogs.get(taskId) || task?.recentLogs || [] });
-  } catch (e: any) { res.json({ task: null, screenshot: null, logs: [] }); }
-});
-
-app.get('/debug/test', async (req, res) => {
-  try { await db.collection('assix_tasks').limit(1).get(); res.json({ success: true, mode: 'github-actions', groq: !!GROQ_API_KEY, github: !!GITHUB_TOKEN }); }
-  catch (e: any) { res.json({ success: false, error: e.message }); }
-});
-
-app.post('/api/task/start', async (req, res) => {
-  try {
-    const { taskType, config = {}, label } = req.body;
-    const taskId = uuidv4();
-    await db.collection('assix_tasks').doc(taskId).set({
-      taskId, taskType, label: label || taskType, config,
-      status: 'queued', progress: 0,
-      total: config.maxLeads || config.targets?.length || 10,
-      createdAt: new Date().toISOString(), runner: 'github-actions',
-    });
-    await logAction(taskId, 'Task queued — triggering GitHub runner...');
-    await triggerGitHubActions(); // INSTANT TRIGGER
-    res.json({ taskId });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
-});
-
-app.post('/api/task/dynamic', async (req, res) => {
-  try {
-    const { goal, context, url } = req.body;
-    const taskId = uuidv4();
-    await db.collection('assix_tasks').doc(taskId).set({
-      taskId, taskType: 'dynamic', label: `AI: ${goal.slice(0, 40)}`,
-      config: { goal, context, url }, status: 'queued', progress: 0, total: 10,
-      createdAt: new Date().toISOString(), runner: 'github-actions',
-    });
-    await logAction(taskId, 'Task queued — triggering GitHub runner...');
-    await triggerGitHubActions(); // INSTANT TRIGGER
-    res.json({ taskId });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
-});
-
-app.get('/api/task/:taskId/status', async (req, res) => {
-  try {
-    const doc = await db.collection('assix_tasks').doc(req.params.taskId).get();
-    if (!doc.exists) return res.status(404).json({ error: 'Not found' });
-    const logs = await db.collection('assix_tasks').doc(req.params.taskId).collection('logs').orderBy('timestamp').limit(100).get();
-    res.json({ task: doc.data(), logs: logs.docs.map(d => d.data()) });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
-});
-
-app.get('/api/tasks/all', async (req, res) => {
-  try { const s = await db.collection('assix_tasks').orderBy('createdAt', 'desc').limit(50).get(); res.json(s.docs.map(d => d.data())); }
-  catch (err: any) { res.status(500).json({ error: err.message }); }
-});
-
-app.get('/api/tasks/completed', async (req, res) => {
-  try { const s = await db.collection('assix_tasks').where('status', '==', 'complete').orderBy('createdAt', 'desc').get(); res.json(s.docs.map(d => d.data())); }
-  catch (err: any) { res.status(500).json({ error: err.message }); }
-});
-
-app.get('/api/tasks/active', async (req, res) => {
-  try { const s = await db.collection('assix_tasks').where('status', 'in', ['running', 'queued']).get(); res.json(s.docs.map(d => d.data())); }
-  catch (err: any) { res.status(500).json({ error: err.message }); }
-});
-
-app.post('/api/task/:taskId/resolve', async (req, res) => {
-  try { await db.collection('assix_tasks').doc(req.params.taskId).update({ resolved: true, status: 'running' }); res.json({ success: true }); }
-  catch (err: any) { res.status(500).json({ error: err.message }); }
-});
-
-app.delete('/api/task/:taskId', async (req, res) => {
-  try { await db.collection('assix_tasks').doc(req.params.taskId).delete(); res.json({ success: true }); }
-  catch (err: any) { res.status(500).json({ error: err.message }); }
-});
-
-app.get('/api/task/:taskId/export/csv', async (req, res) => {
-  try {
-    const snap = await db.collection('leads').where('taskId', '==', req.params.taskId).get();
-    let data = snap.docs.map(d => d.data());
-    if (data.length === 0) { const t = await db.collection('assix_tasks').doc(req.params.taskId).get(); if (t.exists && t.data()?.results) data = t.data()?.results; }
-    res.setHeader('Content-Type', 'text/csv');
-    res.setHeader('Content-Disposition', `attachment; filename="assix-${req.params.taskId}.csv"`);
-    res.send(toCSV(data));
-  } catch (err: any) { res.status(500).send(err.message); }
-});
-
-app.get('/api/task/:taskId/report', async (req, res) => {
-  try {
-    const doc = await db.collection('assix_tasks').doc(req.params.taskId).get();
-    if (!doc.exists) return res.status(404).json({ error: 'Not found' });
-    const task = doc.data() || {};
-    if (task.report) return res.json({ report: task.report });
-    const leads = await db.collection('leads').where('taskId', '==', req.params.taskId).get();
-    const report = await callLLM('You are a market intelligence analyst.', `Task: ${task.taskType}\nCity: ${task.config?.city}\nNiche: ${task.config?.niche}\nLeads: ${leads.size}\n\n## Executive Summary\n## Lead Analysis\n## Recommended Pitch\n## Next Steps`);
-    await db.collection('assix_tasks').doc(req.params.taskId).update({ report });
-    res.json({ report });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
-});
-
-app.post('/api/console/message', upload.array('files'), async (req, res) => {
-  try {
-    const { message, taskId = 'general' } = req.body;
-    const histSnap = await db.collection('assix_tasks').doc(taskId).collection('messages').orderBy('timestamp').limit(20).get();
-    const messages = histSnap.docs.map(d => d.data());
-    const userEntry = { role: 'user', msg: message, timestamp: Date.now() };
-    await db.collection('assix_tasks').doc(taskId).collection('messages').add(userEntry);
-    messages.push(userEntry);
-    const response = await callLLMChat('You are Assix Agent — an intelligent browser automation assistant. Be concise and direct.', messages);
-    await db.collection('assix_tasks').doc(taskId).collection('messages').add({ role: 'agent', msg: response, timestamp: Date.now() });
-    res.json({ response });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
-});
-
-app.get('/api/leads/all', async (req, res) => {
-  try { const s = await db.collection('leads').orderBy('createdAt', 'desc').limit(200).get(); res.json(s.docs.map(d => ({ leadId: d.id, ...d.data() }))); }
-  catch (err: any) { res.status(500).json({ error: err.message }); }
-});
-
-app.post('/api/leads/push-close-batch', async (req, res) => {
-  try {
-    const snap = await db.collection('leads').where('sentToClose', '==', false).limit(50).get();
-    let pushed = 0; let failed = 0;
-    for (const doc of snap.docs) {
-      const r = await pushToClose(doc.data());
-      if ('success' in r) { await doc.ref.update({ sentToClose: true }); pushed++; } else failed++;
-      await new Promise(r => setTimeout(r, 600));
+    const res = await fetch(CONFIG.serverUrl+'/api/console/smart', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({message: txt, history: chat.slice(-12)})
+    })
+    const data = await res.json()
+    chat[chat.length-1] = {role:'agent', msg: data.response}
+    renderChat()
+    if (data.launchTask && data.goal) {
+      chat.push({role:'agent', msg:'🚀 Launching task now...'})
+      renderChat()
+      const taskRes = await fetch(CONFIG.serverUrl+'/api/task/dynamic', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({goal: data.goal, context: ''})
+      })
+      const {taskId} = await taskRes.json()
+      connectWS(taskId)
+      fetchTasks()
+      setTimeout(() => setTab('operator'), 1000)
     }
-    res.json({ pushed, failed });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
-});
+  } catch(e) {
+    chat[chat.length-1] = {role:'agent', msg:'Cannot reach server.'}
+    renderChat()
+  }
+}
 
-app.get('/api/sessions/all', async (req, res) => {
-  try { const s = await db.collection('assix_sessions').get(); res.json(s.docs.map(d => ({ platform: d.id, savedAt: d.data()?.savedAt }))); }
-  catch (err: any) { res.status(500).json({ error: err.message }); }
-});
+function handleFiles(input) {
+  attachments = [...attachments, ...Array.from(input.files)]
+  input.value = ''
+  renderAttachBar()
+}
 
-app.post('/api/scrape/universal', async (req, res) => {
+function renderAttachBar() {
+  const bar = document.getElementById('attach-bar')
+  if (attachments.length===0) { bar.classList.remove('show'); return }
+  bar.classList.add('show')
+  bar.innerHTML = attachments.map((f,i) => `<div class="attach-chip">↑ ${f.name} <span onclick="attachments.splice(${i},1);renderAttachBar()" style="cursor:pointer">×</span></div>`).join('')
+}
+
+function setTab(tab) {
+  currentTab = tab
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'))
+  document.getElementById('panel-'+tab)?.classList.add('active')
+  document.querySelectorAll('.pill-btn').forEach(b => b.classList.remove('active'))
+  if (tab==='operator'||tab==='console') {
+    document.querySelectorAll('.pill-btn').forEach(b => { if(b.textContent.toLowerCase().includes(tab==='operator'?'live':'console')) b.classList.add('active') })
+  }
+}
+
+function toggleLeft() {
+  leftOpen = !leftOpen
+  document.getElementById('left').classList.toggle('closed', !leftOpen)
+  const btn = document.getElementById('toggle-left')
+  btn.classList.toggle('closed', !leftOpen)
+  btn.textContent = leftOpen ? '›' : '‹'
+  btn.style.left = leftOpen ? '210px' : '0'
+}
+
+function toggleRight() {
+  rightOpen = !rightOpen
+  document.getElementById('right').classList.toggle('closed', !rightOpen)
+  const btn = document.getElementById('toggle-right')
+  btn.classList.toggle('closed', !rightOpen)
+  btn.textContent = rightOpen ? '‹' : '›'
+  btn.style.right = rightOpen ? '152px' : '0'
+}
+
+async function stopActiveTask() {
+  if (!activeTask) return
+  dismissTask(activeTask.taskId)
+}
+
+async function resolveCaptcha() {
+  if (!activeTask) return
+  await fetch(CONFIG.serverUrl+'/api/task/'+activeTask.taskId+'/resolve',{method:'POST'}).catch(()=>{})
+  document.getElementById('captcha-bar').classList.remove('show')
+  document.getElementById('live-box').classList.remove('captcha')
+}
+
+function exportCSV(taskId) { window.open(CONFIG.serverUrl+'/api/task/'+taskId+'/export/csv') }
+
+async function fetchReport(taskId) {
   try {
-    const { url, extract } = req.body;
-    const taskId = uuidv4();
-    await db.collection('assix_tasks').doc(taskId).set({
-      taskId, taskType: 'universal_scrape', label: `Scrape: ${url.slice(0, 40)}`,
-      config: { url, extract }, status: 'queued', progress: 0, total: 10,
-      createdAt: new Date().toISOString(),
-    });
-    await logAction(taskId, 'Task queued — triggering GitHub runner...');
-    await triggerGitHubActions();
-    res.json({ taskId });
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
-});
+    const res = await fetch(CONFIG.serverUrl+'/api/task/'+taskId+'/report')
+    const {report} = await res.json()
+    document.getElementById('report-content').textContent = report
+    document.getElementById('report-overlay').classList.add('show')
+  } catch(e) { alert('Could not fetch report') }
+}
 
-const publicDir = path.join(process.cwd(), 'public');
-app.use(express.static(publicDir));
-app.get('*', (req, res) => {
-  const indexPath = path.join(publicDir, 'index.html');
-  if (fs.existsSync(indexPath)) res.sendFile(indexPath);
-  else res.json({ status: 'Assix API running', version: '3.0.0', mode: 'github-actions' });
-});
+function closeReport() { document.getElementById('report-overlay').classList.remove('show') }
 
-const PORT = parseInt(process.env.PORT || '8080');
-server.listen(PORT, '0.0.0.0', () => console.log(`Assix v3 running on port ${PORT}`));
+async function pushAllToClose() {
+  try {
+    const res = await fetch(CONFIG.serverUrl+'/api/leads/push-close-batch',{method:'POST'})
+    const {pushed,failed} = await res.json()
+    alert(`Pushed ${pushed} leads to Close.io. Failed: ${failed}`)
+  } catch(e) { alert('Error pushing to Close.io') }
+}
+
+async function viewSessions() {
+  try {
+    const res = await fetch(CONFIG.serverUrl+'/api/sessions/all')
+    const d = await res.json()
+    alert(d.length===0?'No saved sessions':d.map(s=>s.platform).join(', '))
+  } catch(e) { alert('Server offline') }
+}
+
+// ============================================================
+// Countdown timer for queued tasks
+// ============================================================
+let countdownInterval = null
+
+function startCountdown() {
+  const el = document.getElementById('live-countdown')
+  if (!el) return
+  el.style.display = 'inline'
+  if (countdownInterval) clearInterval(countdownInterval)
+  const now = new Date()
+  const secondsInCycle = now.getSeconds() + (now.getMinutes() % 2) * 60
+  let secsLeft = 120 - secondsInCycle
+  if (secsLeft <= 0) secsLeft += 120
+  const update = () => {
+    if (secsLeft <= 0) { el.textContent = '⏳ PICKING UP...'; secsLeft = 120 }
+    else { el.textContent = `⏳ RUNNER IN ${secsLeft}s`; secsLeft-- }
+  }
+  update()
+  countdownInterval = setInterval(update, 1000)
+}
+
+function stopCountdown() {
+  if (countdownInterval) { clearInterval(countdownInterval); countdownInterval = null }
+  const el = document.getElementById('live-countdown')
+  if (el) el.style.display = 'none'
+}
+
+function openModal() { document.getElementById('modal-overlay').classList.add('show'); renderTaskFields() }
+function openModalWith(type) { document.getElementById('task-type-select').value=type; openModal() }
+function closeModal() { document.getElementById('modal-overlay').classList.remove('show'); taskConfig={} }
+
+function renderTaskFields() {
+  taskConfig = {}
+  const type = document.getElementById('task-type-select').value
+  const nichesOpts = CONFIG.niches.map(n=>`<option value="${n}">${n}</option>`).join('')
+  const citiesOpts = [...CONFIG.cities_en,...CONFIG.cities_fr].map(c=>`<option value="${c}">${c}</option>`).join('')
+  let html = ''
+  if (type==='google_maps_scrape') {
+    html = `
+      <div class="field"><div class="lbl" style="margin-bottom:6px">NICHE</div><select onchange="taskConfig.niche=this.value"><option value="">Select...</option>${nichesOpts}</select></div>
+      <div class="field"><div class="lbl" style="margin-bottom:6px">CITY</div><select onchange="taskConfig.city=this.value"><option value="">Select...</option>${citiesOpts}</select></div>
+      <div class="field"><div class="lbl" style="margin-bottom:6px">MARKET</div><select onchange="taskConfig.market=this.value"><option value="english_ca">English Canada</option><option value="french_ca">French Canada</option><option value="french_eu">French Europe</option></select></div>
+      <div class="field-last"><div class="lbl" style="margin-bottom:6px">MAX LEADS</div><input type="number" value="50" onchange="taskConfig.maxLeads=parseInt(this.value)"/></div>`
+  } else if (type==='pages_jaunes_scrape') {
+    html = `
+      <div class="field"><div class="lbl" style="margin-bottom:6px">NICHE</div><input type="text" placeholder="e.g. plombier" onchange="taskConfig.niche=this.value"/></div>
+      <div class="field"><div class="lbl" style="margin-bottom:6px">CITY</div><input type="text" placeholder="e.g. Montreal" onchange="taskConfig.city=this.value"/></div>
+      <div class="field-last"><div class="lbl" style="margin-bottom:6px">MAX LEADS</div><input type="number" value="50" onchange="taskConfig.maxLeads=parseInt(this.value)"/></div>`
+  } else if (type==='instagram_dm') {
+    html = `
+      <div class="field"><div class="lbl" style="margin-bottom:6px">USERNAME</div><input type="text" placeholder="your_username" onchange="taskConfig.igUsername=this.value"/></div>
+      <div class="field"><div class="lbl" style="margin-bottom:6px">PASSWORD</div><input type="password" onchange="taskConfig.igPassword=this.value"/></div>
+      <div class="field"><div class="lbl" style="margin-bottom:6px">TARGETS (one per line)</div><textarea rows="4" placeholder="username1" onchange="taskConfig.targets=this.value.split('\\n').filter(Boolean)"></textarea></div>
+      <div class="field-last"><div class="lbl" style="margin-bottom:6px">MESSAGE</div><textarea rows="3" onchange="taskConfig.message=this.value"></textarea></div>`
+  } else if (type==='whatsapp_outreach') {
+    html = `
+      <div class="field"><div class="lbl" style="margin-bottom:6px">PHONE NUMBERS (one per line)</div><textarea rows="4" placeholder="+14165551234" onchange="taskConfig.targets=this.value.split('\\n').filter(Boolean)"></textarea></div>
+      <div class="field-last"><div class="lbl" style="margin-bottom:6px">MESSAGE</div><textarea rows="3" onchange="taskConfig.message=this.value"></textarea></div>`
+  } else if (type==='market_research') {
+    html = `
+      <div class="field"><div class="lbl" style="margin-bottom:6px">TOPIC</div><input type="text" placeholder="e.g. plumbers in Toronto" onchange="taskConfig.topic=this.value"/></div>
+      <div class="field-last"><div class="lbl" style="margin-bottom:6px">GOAL</div><input type="text" placeholder="e.g. find pain points" onchange="taskConfig.goal=this.value"/></div>`
+  } else if (type==='dynamic') {
+    html = `<div class="field-last"><div class="lbl" style="margin-bottom:6px">DESCRIBE YOUR GOAL</div><textarea rows="5" placeholder="e.g. Go to Pages Jaunes, search plumbers in Montreal, extract names and phones" onchange="taskConfig.goal=this.value"></textarea><div style="font-size:10px;color:#52525B;margin-top:6px">AI will plan and execute automatically</div></div>`
+  }
+  document.getElementById('task-fields').innerHTML = html
+}
+
+async function startTask() {
+  const taskType = document.getElementById('task-type-select').value
+  try {
+    const res = await fetch(CONFIG.serverUrl+'/api/task/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({taskType,config:taskConfig,label:taskType})})
+    const {taskId} = await res.json()
+    closeModal()
+    connectWS(taskId)
+    fetchTasks()
+    startScreenshotPolling(taskId)
+  } catch(e) { alert('Server not reachable. Is Railway deployed?') }
+}
+</script>
+</body>
+</html>
