@@ -636,34 +636,38 @@ function renderChat() {
 async function sendMsg() {
   const input = document.getElementById('chat-input')
   const txt = input.value.trim()
-  if (!txt && attachments.length===0) return
-  chat.push({role:'user',msg:txt})
+  if (!txt) return
+  chat.push({role:'user', msg:txt})
   input.value = ''
   renderChat()
-  if (txt.toLowerCase().startsWith('do:') || txt.toLowerCase().startsWith('run:')) {
-    const goal = txt.replace(/^(do:|run:)/i,'').trim()
-    attachments = []; renderAttachBar()
-    try {
-      const res = await fetch(CONFIG.serverUrl+'/api/task/dynamic',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({goal,context:''})})
-      const {taskId} = await res.json()
-      connectWS(taskId); fetchTasks()
-      chat.push({role:'agent',msg:`Task started: "${goal}". Check Live View.`})
-    } catch(e) { chat.push({role:'agent',msg:'Cannot reach server.'}) }
-    renderChat(); return
-  }
-  const fd = new FormData()
-  fd.append('message', txt)
-  fd.append('taskId', activeTask?.taskId||'general')
-  attachments.forEach(f => fd.append('files', f))
-  attachments = []; renderAttachBar()
-  chat.push({role:'agent',msg:'Thinking...'})
+  chat.push({role:'agent', msg:'...'})
   renderChat()
   try {
-    const res = await fetch(CONFIG.serverUrl+'/api/console/message',{method:'POST',body:fd})
-    const {response} = await res.json()
-    chat[chat.length-1] = {role:'agent',msg:response}
-  } catch(e) { chat[chat.length-1] = {role:'agent',msg:'Cannot reach server.'} }
-  renderChat()
+    const res = await fetch(CONFIG.serverUrl+'/api/console/smart', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({message: txt, history: chat.slice(-12)})
+    })
+    const data = await res.json()
+    chat[chat.length-1] = {role:'agent', msg: data.response}
+    renderChat()
+    if (data.launchTask && data.goal) {
+      chat.push({role:'agent', msg:'🚀 Launching task now...'})
+      renderChat()
+      const taskRes = await fetch(CONFIG.serverUrl+'/api/task/dynamic', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({goal: data.goal, context: ''})
+      })
+      const {taskId} = await taskRes.json()
+      connectWS(taskId)
+      fetchTasks()
+      setTimeout(() => setTab('operator'), 1000)
+    }
+  } catch(e) {
+    chat[chat.length-1] = {role:'agent', msg:'Cannot reach server.'}
+    renderChat()
+  }
 }
 
 function handleFiles(input) {
