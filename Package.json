@@ -1,0 +1,19 @@
+{
+  "name": "assix",
+  "version": "1.0.0",
+  "scripts": {
+    "start": "tsx server.ts",
+    "dev": "tsx server.ts"
+  },
+  "dependencies": {
+    "axios": "^1.6.0",
+    "cors": "^2.8.5",
+    "express": "^4.18.0",
+    "firebase-admin": "^12.0.0",
+    "multer": "^1.4.5-lts.1",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0",
+    "uuid": "^9.0.0",
+    "ws": "^8.16.0"
+  }
+}
