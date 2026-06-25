@@ -442,6 +442,19 @@ app.post('/api/scrape/universal', async (req, res) => {
 
 
 
+
+// Send command to running task
+app.post('/api/task/:taskId/command', async (req, res) => {
+  try {
+    const { command } = req.body;
+    await db.collection('assix_tasks').doc(req.params.taskId).update({
+      pendingCommand: command,
+      commandSentAt: new Date().toISOString(),
+    });
+    res.json({ success: true });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
 app.post('/api/trigger', async (req, res) => {
   try {
     await triggerGitHubActions();
