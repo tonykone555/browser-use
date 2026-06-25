@@ -226,38 +226,6 @@ async def main():
         use_vision=False,
     )
 
-    step_count = [0]
-
-    def on_step(state, output, steps):
-        step_count[0] = steps
-        action = ""
-        try:
-            if output and output.action:
-                action = str(output.action[0])[:80]
-        except Exception: pass
-        print(f"[Step {steps}] {action}")
-        try:
-            db.collection("assix_tasks").document(task_id).update({
-                "progress": steps,
-                "progressPct": min(steps * 2, 99),
-                "status": "running",
-            })
-            entry = {
-                "time": datetime.now().strftime("%H:%M:%S"),
-                "msg": f"→ Step {steps}: {action}" if action else f"→ Step {steps}",
-                "type": "info",
-                "timestamp": int(datetime.now().timestamp() * 1000),
-            }
-            task_ref = db.collection("assix_tasks").document(task_id)
-            task_data = task_ref.get().to_dict() or {}
-            recent_logs = task_data.get("recentLogs", [])
-            recent_logs.append(entry)
-            if len(recent_logs) > 100:
-                recent_logs = recent_logs[-100:]
-            task_ref.update({"recentLogs": recent_logs})
-        except Exception: pass
-
-    agent.register_new_step_callback(on_step)
 
     try:
         log(task_id, "Agent running...")
@@ -284,7 +252,7 @@ async def main():
             "results": results,
             "finalResult": final_result[:5000],
             "completedAt": datetime.now().isoformat(),
-            "progress": len(results) if results else step_count[0],
+            "progress": len(results) if results else 0,
             "progressPct": 100,
         })
 
