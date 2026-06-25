@@ -32,7 +32,7 @@ const db = getFirestore();
 // Groq — console chat only
 // ============================================================
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
-const GROQ_MODEL = 'qwen/qwen3-27b';
+const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
 const callGroq = async (messages: { role: string; content: string }[], retries = 3): Promise<string> => {
   if (!GROQ_API_KEY) return 'GROQ_API_KEY not configured.';
@@ -64,6 +64,24 @@ const callLLMChat = async (systemPrompt: string, messages: any[]): Promise<strin
     { role: 'system', content: systemPrompt },
     ...messages.map(m => ({ role: m.role === 'agent' ? 'assistant' : 'user', content: m.msg || m.content || '' })),
   ]);
+
+
+const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
+const GITHUB_REPO = 'tonykone555/ASSIX.';
+
+const triggerGitHubActions = async () => {
+  if (!GITHUB_TOKEN) { console.log('No GitHub token'); return; }
+  try {
+    const url = `https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/browser-agent.yml/dispatches`;
+    console.log('Triggering GitHub:', url);
+    const res = await axios.post(url, { ref: 'main' }, {
+      headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' }
+    });
+    console.log('GitHub triggered successfully:', res.status);
+  } catch (e: any) {
+    console.log('GitHub trigger FAILED:', e.response?.status, JSON.stringify(e.response?.data), e.message);
+  }
+};
 
 // ============================================================
 // Server
