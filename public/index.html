@@ -730,8 +730,8 @@ async function runNow() {
   try {
     const res = await fetch(CONFIG.serverUrl + '/api/trigger', { method: 'POST' })
     const data = await res.json()
-    addLog(data.success ? '⚡ GitHub runner triggered!' : 'Trigger failed: ' + data.error, data.success ? 'success' : 'error')
-  } catch(e) { addLog('Cannot reach server', 'error') }
+    alert(data.success ? '⚡ GitHub runner triggered!' : 'Trigger failed: ' + (data.error || 'unknown'))
+  } catch(e) { alert('Cannot reach server: ' + e.message) }
 }
 
 async function stopActiveTask() {
