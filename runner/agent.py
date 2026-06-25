@@ -1,4 +1,3 @@
-import asyncio
 import os
 import json
 import re
@@ -23,8 +22,8 @@ if not firebase_admin._apps:
 db = firestore.client()
 
 BROWSER_USE_API_KEY = os.environ.get("BROWSER_USE_API_KEY", "")
-BU_BASE = "https://api.browser-use.com/api/v1"
-HEADERS = {"Authorization": f"Bearer {BROWSER_USE_API_KEY}", "Content-Type": "application/json"}
+BU_BASE = "https://api.browser-use.com/api/v2"
+HEADERS = {"X-Browser-Use-API-Key": BROWSER_USE_API_KEY, "Content-Type": "application/json"}
 
 # ============================================================
 # Helpers
@@ -159,23 +158,24 @@ For each number go to: https://web.whatsapp.com/send?phone=NUMBER then type and 
 
 
 # ============================================================
-# Browser-use Cloud API
+# Browser-use Cloud API v2
 # ============================================================
 def start_bu_task(goal: str) -> dict:
-    res = requests.post(f"{BU_BASE}/run-task", headers=HEADERS, json={"task": goal})
+    res = requests.post(f"{BU_BASE}/tasks", headers=HEADERS, json={"task": goal})
+    print(f"Start task response: {res.status_code} {res.text[:200]}")
     res.raise_for_status()
     return res.json()
 
 
 def get_bu_task(bu_task_id: str) -> dict:
-    res = requests.get(f"{BU_BASE}/task/{bu_task_id}", headers=HEADERS)
+    res = requests.get(f"{BU_BASE}/tasks/{bu_task_id}", headers=HEADERS)
     res.raise_for_status()
     return res.json()
 
 
 def stop_bu_task(bu_task_id: str):
     try:
-        requests.post(f"{BU_BASE}/stop-task", headers=HEADERS, json={"task_id": bu_task_id})
+        requests.post(f"{BU_BASE}/tasks/{bu_task_id}/stop", headers=HEADERS)
     except Exception: pass
 
 
@@ -209,7 +209,6 @@ def main():
     goal = build_goal(task_type, config)
     log(task_id, f"Goal: {goal[:80]}...")
 
-    # Start browser-use cloud task
     log(task_id, "Starting browser-use cloud task...")
     bu_data = start_bu_task(goal)
     bu_task_id = bu_data.get("id") or bu_data.get("task_id")
@@ -218,7 +217,6 @@ def main():
     print(f"Browser-use task ID: {bu_task_id}")
     print(f"Live URL: {live_url}")
 
-    # Save live URL to Firebase so dashboard can show it
     db.collection("assix_tasks").document(task_id).update({
         "buTaskId": bu_task_id,
         "liveUrl": live_url,
@@ -228,7 +226,7 @@ def main():
         log(task_id, f"🔴 Live view: {live_url}", "success")
 
     # Poll for completion
-    max_wait = 25 * 60  # 25 minutes
+    max_wait = 25 * 60
     poll_interval = 5
     elapsed = 0
     step = 0
@@ -240,27 +238,24 @@ def main():
         try:
             bu_status = get_bu_task(bu_task_id)
             status = bu_status.get("status", "")
-            output = bu_status.get("output", "") or ""
+            output = bu_status.get("output", "") or bu_status.get("result", "") or ""
 
             step += 1
-            if step % 6 == 0:  # log every 30 seconds
+            if step % 6 == 0:
                 log(task_id, f"Status: {status} ({elapsed}s elapsed)")
 
-            # Update progress
             db.collection("assix_tasks").document(task_id).update({
                 "progress": step,
                 "progressPct": min(int((elapsed / max_wait) * 100), 99),
                 "status": "running",
             })
 
-            # Check if needs human input (CAPTCHA etc)
-            if status == "paused" or status == "waiting_for_human":
-                log(task_id, "⚠ Agent paused — needs your input. Check live view.", "warning")
+            if status in ("paused", "waiting_for_human"):
+                log(task_id, "⚠ Agent paused — needs your input. Open the live view link.", "warning")
                 db.collection("assix_tasks").document(task_id).update({
                     "status": "waiting",
-                    "waitingMsg": "Agent needs your input. Open the live view link.",
+                    "waitingMsg": f"Agent needs your input. Open: {live_url}",
                 })
-                # Wait up to 10 minutes for human to intervene
                 wait_elapsed = 0
                 while wait_elapsed < 600:
                     time.sleep(10)
@@ -271,11 +266,11 @@ def main():
                         break
                 continue
 
-            if status in ("finished", "completed", "done", "failed", "stopped"):
-                log(task_id, f"Task finished with status: {status}", "success" if status in ("finished", "completed", "done") else "error")
+            if status in ("finished", "completed", "done", "failed", "stopped", "error"):
+                log(task_id, f"Task finished: {status}", "success" if status in ("finished", "completed", "done") else "error")
 
                 is_scraping = task_type in ["google_maps_scrape", "pages_jaunes_scrape"]
-                results = parse_results(output) if is_scraping else []
+                results = parse_results(str(output)) if is_scraping else []
 
                 if is_scraping and results:
                     log(task_id, f"Saving {len(results)} leads...")
@@ -298,7 +293,6 @@ def main():
         except Exception as e:
             print(f"Poll error: {e}")
 
-    # Timeout
     stop_bu_task(bu_task_id)
     log(task_id, "Task timed out after 25 minutes", "error")
     db.collection("assix_tasks").document(task_id).update({"status": "error"})
