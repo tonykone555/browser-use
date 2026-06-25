@@ -8,8 +8,7 @@ from urllib.parse import quote
 import firebase_admin
 from firebase_admin import credentials, firestore
 from steel import Steel
-from browser_use import Agent
-from browser_use.browser.session import BrowserSession
+from browser_use import Agent, Browser, BrowserConfig
 from langchain_groq import ChatGroq
 
 # ============================================================
