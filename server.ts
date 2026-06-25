@@ -28,7 +28,7 @@ const db = getFirestore();
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
-const GITHUB_REPO = 'tonykone555/Assix';
+const GITHUB_REPO = 'tonykone555/ASSIX.';
 
 const triggerGitHubActions = async () => {
   if (!GITHUB_TOKEN) return;
@@ -63,9 +63,6 @@ const callGroq = async (messages: { role: string; content: string }[], retries =
   }
   return 'Groq error: max retries reached';
 };
-
-const callLLM = async (systemPrompt: string, userPrompt: string): Promise<string> =>
-  callGroq([{ role: 'system', content: systemPrompt }, { role: 'user', content: userPrompt }]);
 
 const app = express();
 const server = http.createServer(app);
@@ -260,19 +257,15 @@ app.get('/api/task/:taskId/report', async (req, res) => {
     const task = doc.data() || {};
     if (task.report) return res.json({ report: task.report });
     const leads = await db.collection('leads').where('taskId', '==', req.params.taskId).get();
-    const report = await callLLM('You are a market intelligence analyst.', `Task: ${task.taskType}\nCity: ${task.config?.city}\nNiche: ${task.config?.niche}\nLeads: ${leads.size}\n\n## Executive Summary\n## Lead Analysis\n## Recommended Pitch\n## Next Steps`);
+    const report = await callGroq([{ role: 'system', content: 'You are a market intelligence analyst.' }, { role: 'user', content: `Task: ${task.taskType}\nCity: ${task.config?.city}\nNiche: ${task.config?.niche}\nLeads: ${leads.size}\n\n## Executive Summary\n## Lead Analysis\n## Recommended Pitch\n## Next Steps` }]);
     await db.collection('assix_tasks').doc(req.params.taskId).update({ report });
     res.json({ report });
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
-// ============================================================
-// Smart Console — Groq-powered intake chat
-// ============================================================
 app.post('/api/console/smart', async (req, res) => {
   try {
     const { message, history = [] } = req.body;
-
     const systemPrompt = `You are Assix Agent — an intelligent browser automation assistant.
 Your job is to help users automate tasks on ANY website: Leboncoin, Airbnb, Reddit, Instagram, WhatsApp, Google Maps, LinkedIn, Twitter, Facebook, and more.
 
@@ -289,45 +282,37 @@ RULES:
 - Be concise and direct
 - NEVER write messages for the user — always ask them to provide the exact text
 - Once you have ALL info, set launchTask=true and build a complete detailed goal
-- If user reports an error or problem, acknowledge it, ask what happened, suggest trying again or a different approach
-- Support ANY website task imaginable
-- Always respond in valid JSON
+- If user reports an error or problem, acknowledge it and suggest trying again
+- Support ANY website task
+- Always respond in valid JSON only
 
-When ready to launch respond with:
-{"response": "message to user", "launchTask": true, "goal": "full detailed task for browser-use agent"}
+When ready to launch:
+{"response": "message to user", "launchTask": true, "goal": "full detailed task for browser agent"}
 
-When still gathering info:
-{"response": "next question", "launchTask": false, "goal": null}
-
-The goal string must be extremely detailed — include the exact URL, what to search for, what to click, what message to send, how many targets, etc.`;
+When still gathering:
+{"response": "next question", "launchTask": false, "goal": null}`;
 
     const messages = [
       { role: 'system', content: systemPrompt },
-      ...history
-        .filter((m: any) => m.role && m.msg && m.msg !== '...')
-        .slice(-10)
-        .map((m: any) => ({
-          role: m.role === 'agent' ? 'assistant' : 'user',
-          content: m.msg
-        })),
+      ...history.filter((m: any) => m.role && m.msg && m.msg !== '...').slice(-10).map((m: any) => ({ role: m.role === 'agent' ? 'assistant' : 'user', content: m.msg })),
       { role: 'user', content: message }
     ];
 
     const raw = await callGroq(messages);
-
     let parsed: any = { response: raw, launchTask: false, goal: null };
     try {
       const cleaned = raw.replace(/```json/g, '').replace(/```/g, '').trim();
       const match = cleaned.match(/\{[\s\S]*\}/);
       if (match) parsed = JSON.parse(match[0]);
-    } catch (e) {
-      parsed = { response: raw, launchTask: false, goal: null };
-    }
+    } catch (e) { parsed = { response: raw, launchTask: false, goal: null }; }
 
     res.json(parsed);
-  } catch (err: any) {
-    res.status(500).json({ response: 'Error: ' + err.message, launchTask: false, goal: null });
-  }
+  } catch (err: any) { res.status(500).json({ response: 'Error: ' + err.message, launchTask: false, goal: null }); }
+});
+
+app.get('/api/leads/all', async (req, res) => {
+  try { const s = await db.collection('leads').orderBy('createdAt', 'desc').limit(200).get(); res.json(s.docs.map(d => ({ leadId: d.id, ...d.data() }))); }
+  catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
 app.post('/api/leads/push-close-batch', async (req, res) => {
@@ -341,11 +326,6 @@ app.post('/api/leads/push-close-batch', async (req, res) => {
     }
     res.json({ pushed, failed });
   } catch (err: any) { res.status(500).json({ error: err.message }); }
-});
-
-app.get('/api/leads/all', async (req, res) => {
-  try { const s = await db.collection('leads').orderBy('createdAt', 'desc').limit(200).get(); res.json(s.docs.map(d => ({ leadId: d.id, ...d.data() }))); }
-  catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/api/sessions/all', async (req, res) => {
