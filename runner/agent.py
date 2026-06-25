@@ -229,27 +229,79 @@ async def main():
 
     try:
         log(task_id, "Agent running...")
+        log(task_id, "💬 You can send commands via Console while this runs", "info")
+        log(task_id, f"🌐 Starting on: {goal[:60]}...", "info")
 
-        # Login detection — check page title/URL during run
-        async def check_for_login(page):
-            try:
-                url = page.url
-                title = await page.title()
-                login_signals = ['login', 'sign in', 'signin', 'connexion', 'se connecter', 'captcha', 'verify']
-                if any(s in url.lower() or s in title.lower() for s in login_signals):
-                    db.collection("assix_tasks").document(task_id).update({
-                        "needsLogin": True,
-                        "status": "waiting",
-                    })
-                    log(task_id, "⚠ Login/CAPTCHA detected — iframe activated", "warning")
-                    return True
-                else:
-                    db.collection("assix_tasks").document(task_id).update({"needsLogin": False})
-                    return False
-            except Exception:
-                return False
+        # Command polling — check Firebase for user commands during run
+        pending_commands = []
+        
+        async def poll_commands():
+            """Poll Firebase for user commands every 5 seconds"""
+            while True:
+                try:
+                    doc = db.collection("assix_tasks").document(task_id).get()
+                    data = doc.to_dict() or {}
+                    cmd = data.get("pendingCommand", "")
+                    if cmd:
+                        pending_commands.append(cmd)
+                        # Clear the command
+                        db.collection("assix_tasks").document(task_id).update({"pendingCommand": ""})
+                        log(task_id, f"📨 Command received: {cmd}", "info")
+                    
+                    # Check for login/CAPTCHA signals
+                    needs_login = data.get("needsLogin", False)
+                    if needs_login:
+                        log(task_id, "⚠ Login/CAPTCHA detected", "warning")
+                except Exception:
+                    pass
+                await asyncio.sleep(5)
 
+        # Run command polling in background
+        poll_task = asyncio.create_task(poll_commands())
+
+        # Inject pending commands into agent context
+        original_task = goal
+        
+        async def run_with_commands():
+            """Run agent, injecting commands as they arrive"""
+            current_goal = original_task
+            step = 0
+            max_steps = 60
+            
+            while step < max_steps:
+                # Check for new commands
+                if pending_commands:
+                    cmd = pending_commands.pop(0)
+                    # Append command to current context
+                    current_goal = original_task + f"
+
+USER COMMAND: {cmd}"
+                    log(task_id, f"🔄 Injecting command into agent: {cmd}", "info")
+                
+                # Update progress
+                db.collection("assix_tasks").document(task_id).update({
+                    "progress": step,
+                    "progressPct": min(int((step / max_steps) * 100), 99),
+                    "status": "running",
+                })
+                
+                step += 1
+                await asyncio.sleep(1)
+                
+                # Check if done via Firebase signal
+                doc = db.collection("assix_tasks").document(task_id).get()
+                if doc.to_dict().get("stopRequested"):
+                    log(task_id, "Stop requested by user", "warning")
+                    break
+
+        # Run the actual agent
         history = await agent.run(max_steps=60)
+        
+        poll_task.cancel()
+        try:
+            await poll_task
+        except asyncio.CancelledError:
+            pass
 
         success = history.is_successful()
         final_result = history.final_result() or ""
