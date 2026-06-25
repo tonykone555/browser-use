@@ -176,7 +176,8 @@ select,input[type=text],input[type=number],input[type=password],textarea{width:1
               <div style="flex:1;background:#2A2A2A;border-radius:4px;padding:3px 8px;font-size:9px;color:#8E8E93;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="live-url">about:blank</div>
               <div style="flex-shrink:0;font-size:9px;color:#52525B" id="live-task-name">NO TASK</div>
             </div>
-            <img id="live-img" alt="live view" style="margin-top:28px"/>
+            <img id="live-img" alt="live view" style="margin-top:28px;display:none"/>
+            <iframe id="live-iframe" style="position:absolute;top:28px;left:0;right:0;bottom:40px;width:100%;border:none;display:none" allow="camera;microphone;fullscreen" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
             <div id="live-empty" style="margin-top:28px">START A TASK TO SEE LIVE VIEW</div>
             <div id="live-footer">
               <span id="live-status">● IDLE</span>
@@ -449,8 +450,21 @@ function selectTask(task) {
   document.getElementById('live-niche').textContent = [task.config?.niche?.toUpperCase(), task.config?.city?.toUpperCase()].filter(Boolean).join(' · ')
   document.getElementById('live-box').classList.toggle('captcha', task.status==='paused_captcha')
   document.getElementById('captcha-bar').classList.toggle('show', task.status==='paused_captcha')
-  if (screenshots[task.taskId]) showScreenshot(screenshots[task.taskId])
+  if (task.liveUrl && task.liveUrl.startsWith('http')) { showLiveIframe(task.liveUrl) } else if (screenshots[task.taskId]) showScreenshot(screenshots[task.taskId])
   if (task.status==='running'||task.status==='paused_captcha') connectWS(task.taskId)
+}
+
+function showLiveIframe(url) {
+  const iframe = document.getElementById('live-iframe')
+  const img = document.getElementById('live-img')
+  const empty = document.getElementById('live-empty')
+  if (url && url.startsWith('http')) {
+    iframe.src = url
+    iframe.style.display = 'block'
+    img.style.display = 'none'
+    empty.style.display = 'none'
+    document.getElementById('live-url').textContent = url
+  }
 }
 
 function showScreenshot(src) {
