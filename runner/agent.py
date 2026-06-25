@@ -273,9 +273,7 @@ async def main():
                 if pending_commands:
                     cmd = pending_commands.pop(0)
                     # Append command to current context
-                    current_goal = original_task + f"
-
-USER COMMAND: {cmd}"
+                    current_goal = original_task + "\n\nUSER COMMAND: " + cmd
                     log(task_id, f"🔄 Injecting command into agent: {cmd}", "info")
                 
                 # Update progress
