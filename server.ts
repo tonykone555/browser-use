@@ -31,15 +31,17 @@ const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
 const GITHUB_REPO = 'tonykone555/ASSIX.';
 
 const triggerGitHubActions = async () => {
-  if (!GITHUB_TOKEN) return;
+  if (!GITHUB_TOKEN) { console.log('No GitHub token'); return; }
   try {
-    await axios.post(
-      `https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/browser-agent.yml/dispatches`,
-      { ref: 'main' },
-      { headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' } }
-    );
-    console.log('GitHub Actions triggered');
-  } catch (e: any) { console.log('GitHub trigger failed:', e.message); }
+    const url = `https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/browser-agent.yml/dispatches`;
+    console.log('Triggering GitHub:', url);
+    const res = await axios.post(url, { ref: 'main' }, {
+      headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' }
+    });
+    console.log('GitHub triggered successfully:', res.status);
+  } catch (e: any) {
+    console.log('GitHub trigger FAILED:', e.response?.status, JSON.stringify(e.response?.data), e.message);
+  }
 };
 
 const callGroq = async (messages: { role: string; content: string }[], retries = 3): Promise<string> => {
@@ -179,7 +181,7 @@ app.get('/api/task/:taskId/live', async (req, res) => {
 });
 
 app.get('/debug/test', async (req, res) => {
-  try { await db.collection('assix_tasks').limit(1).get(); res.json({ success: true, mode: 'github-actions', groq: !!GROQ_API_KEY, github: !!GITHUB_TOKEN }); }
+  try { await db.collection('assix_tasks').limit(1).get(); res.json({ success: true, mode: 'github-actions', groq: !!GROQ_API_KEY, github: !!GITHUB_TOKEN, repo: GITHUB_REPO }); }
   catch (e: any) { res.json({ success: false, error: e.message }); }
 });
 
@@ -268,29 +270,11 @@ app.post('/api/console/smart', async (req, res) => {
     const { message, history = [] } = req.body;
     const systemPrompt = `You are Assix Agent — an intelligent browser automation assistant.
 Your job is to help users automate tasks on ANY website: Leboncoin, Airbnb, Reddit, Instagram, WhatsApp, Google Maps, LinkedIn, Twitter, Facebook, and more.
-
-When a user wants to do something on a website, gather ALL necessary info through conversation:
-- What website/platform?
-- What action? (send messages, scrape data, post listings, login, search, etc.)
-- What search criteria? (city, category, type, keywords, filters)
-- What message to send? (ask them to write it — NEVER write it for them)
-- How many targets?
-- Login needed? (ask for credentials only when necessary)
-
-RULES:
-- Ask ONE question at a time
-- Be concise and direct
-- NEVER write messages for the user — always ask them to provide the exact text
-- Once you have ALL info, set launchTask=true and build a complete detailed goal
-- If user reports an error or problem, acknowledge it and suggest trying again
-- Support ANY website task
-- Always respond in valid JSON only
-
-When ready to launch:
-{"response": "message to user", "launchTask": true, "goal": "full detailed task for browser agent"}
-
-When still gathering:
-{"response": "next question", "launchTask": false, "goal": null}`;
+When a user wants to do something, gather ALL necessary info through conversation one question at a time.
+NEVER write messages for the user. Once you have ALL info set launchTask=true.
+Always respond in valid JSON only.
+When ready: {"response": "msg", "launchTask": true, "goal": "full detailed task"}
+Still gathering: {"response": "next question", "launchTask": false, "goal": null}`;
 
     const messages = [
       { role: 'system', content: systemPrompt },
@@ -305,7 +289,6 @@ When still gathering:
       const match = cleaned.match(/\{[\s\S]*\}/);
       if (match) parsed = JSON.parse(match[0]);
     } catch (e) { parsed = { response: raw, launchTask: false, goal: null }; }
-
     res.json(parsed);
   } catch (err: any) { res.status(500).json({ response: 'Error: ' + err.message, launchTask: false, goal: null }); }
 });
