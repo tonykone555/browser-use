@@ -229,6 +229,26 @@ async def main():
 
     try:
         log(task_id, "Agent running...")
+
+        # Login detection — check page title/URL during run
+        async def check_for_login(page):
+            try:
+                url = page.url
+                title = await page.title()
+                login_signals = ['login', 'sign in', 'signin', 'connexion', 'se connecter', 'captcha', 'verify']
+                if any(s in url.lower() or s in title.lower() for s in login_signals):
+                    db.collection("assix_tasks").document(task_id).update({
+                        "needsLogin": True,
+                        "status": "waiting",
+                    })
+                    log(task_id, "⚠ Login/CAPTCHA detected — iframe activated", "warning")
+                    return True
+                else:
+                    db.collection("assix_tasks").document(task_id).update({"needsLogin": False})
+                    return False
+            except Exception:
+                return False
+
         history = await agent.run(max_steps=60)
 
         success = history.is_successful()
@@ -270,5 +290,14 @@ async def main():
         except Exception: pass
 
 
+async def loop():
+    print("Assix worker starting — polling for tasks...")
+    while True:
+        try:
+            await main()
+        except Exception as e:
+            print(f"Error in main: {e}")
+        await asyncio.sleep(10)
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    asyncio.run(loop())
