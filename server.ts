@@ -67,7 +67,7 @@ const callLLMChat = async (systemPrompt: string, messages: any[]): Promise<strin
 
 
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
-const GITHUB_REPO = 'tonykone555/ASSIX.';
+const GITHUB_REPO = 'tonykone555/browser-use';
 
 const triggerGitHubActions = async () => {
   if (!GITHUB_TOKEN) { console.log('No GitHub token'); return; }
