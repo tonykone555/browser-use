@@ -152,6 +152,7 @@ select,input[type=text],input[type=number],input[type=password],textarea{width:1
         </div>
         <div style="display:flex;gap:6px">
           <button class="btn-sm" onclick="stopActiveTask()">STOP</button>
+          <button class="btn-sm" onclick="runNow()" style="background:#00ff88;color:#000;margin-left:8px">▶ RUN NOW</button>
         </div>
       </div>
       <div id="metrics">
@@ -723,6 +724,14 @@ function toggleRight() {
   btn.classList.toggle('closed', !rightOpen)
   btn.textContent = rightOpen ? '‹' : '›'
   btn.style.right = rightOpen ? '152px' : '0'
+}
+
+async function runNow() {
+  try {
+    const res = await fetch(CONFIG.serverUrl + '/api/trigger', { method: 'POST' })
+    const data = await res.json()
+    addLog(data.success ? '⚡ GitHub runner triggered!' : 'Trigger failed: ' + data.error, data.success ? 'success' : 'error')
+  } catch(e) { addLog('Cannot reach server', 'error') }
 }
 
 async function stopActiveTask() {
