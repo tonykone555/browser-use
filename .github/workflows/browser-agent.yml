@@ -14,7 +14,7 @@ jobs:
       FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       FIREBASE_CLIENT_EMAIL: ${{ secrets.FIREBASE_CLIENT_EMAIL }}
       FIREBASE_PRIVATE_KEY: ${{ secrets.FIREBASE_PRIVATE_KEY }}
-      GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+      BROWSER_USE_API_KEY: ${{ secrets.BROWSER_USE_API_KEY }}
 
     steps:
       - name: Checkout repo
@@ -29,12 +29,6 @@ jobs:
         working-directory: runner
         run: pip install -r requirements.txt
 
-      - name: Install Playwright browsers
-        run: python -m playwright install chromium
-
-      - name: Install Xvfb
-        run: sudo apt-get install -y xvfb
-
       - name: Run agent
         working-directory: runner
-        run: xvfb-run python agent.py
+        run: python agent.py
