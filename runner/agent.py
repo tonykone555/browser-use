@@ -213,6 +213,34 @@ async def main():
     if live_url:
         log(task_id, f"🔴 Live: {live_url}", "success")
 
+    # Screenshot polling — capture Steel browser every 3 seconds
+    import threading
+    import base64
+    stop_screenshots = threading.Event()
+
+    def screenshot_loop():
+        import time
+        import requests as req
+        while not stop_screenshots.is_set():
+            try:
+                r = req.get(
+                    f"https://api.steel.dev/v1/sessions/{session.id}/screenshot",
+                    headers={"Steel-Api-Key": os.environ.get("STEEL_API_KEY", "")},
+                    timeout=5
+                )
+                if r.status_code == 200:
+                    img_b64 = base64.b64encode(r.content).decode("utf-8")
+                    db.collection("assix_tasks").document(task_id).update({
+                        "latestScreenshot": img_b64,
+                        "screenshotAt": int(datetime.now().timestamp() * 1000),
+                    })
+            except Exception:
+                pass
+            time.sleep(3)
+
+    screenshot_thread = threading.Thread(target=screenshot_loop, daemon=True)
+    screenshot_thread.start()
+
     # Connect browser-use to Steel via CDP
     steel_cdp_url = f"wss://connect.steel.dev?apiKey={os.environ.get('STEEL_API_KEY', '')}&sessionId={session.id}"
     
@@ -300,6 +328,7 @@ async def main():
             await poll_task
         except asyncio.CancelledError:
             pass
+        stop_screenshots.set()
 
         success = history.is_successful()
         final_result = history.final_result() or ""
