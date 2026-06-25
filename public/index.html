@@ -58,7 +58,7 @@ input,select,textarea{font-family:'Space Grotesk',sans-serif;outline:none}
 .tab-panel{display:none;flex:1;flex-direction:column;overflow:hidden}
 .tab-panel.active{display:flex}
 .tab-scroll{flex:1;overflow-y:auto;padding:14px 20px 70px}
-#live-box{flex:1;margin:14px 20px 0;border:1px solid #6366F1;border-radius:4px;overflow:hidden;position:relative;background:#0F0F0F;min-height:0;transition:border-color .3s}
+#live-box{flex:1;margin:14px 20px 0;border:1px solid #6366F1;border-radius:4px;overflow:auto;position:relative;background:#0F0F0F;min-height:0;transition:border-color .3s}
 #live-box.captcha{border-color:#F59E0B}
 #live-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:none}
 #live-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;color:#52525B;letter-spacing:.1em;text-align:center}
@@ -178,7 +178,8 @@ select,input[type=text],input[type=number],input[type=password],textarea{width:1
               <div style="flex-shrink:0;font-size:9px;color:#52525B" id="live-task-name">NO TASK</div>
             </div>
             <img id="live-img" alt="live view" style="margin-top:28px;display:none"/>
-            <iframe id="live-iframe" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;display:none" allow="camera;microphone;fullscreen" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+            <button id="take-control-btn" onclick="" style="display:none;position:absolute;top:36px;right:8px;z-index:10;background:rgba(99,102,241,0.9);color:white;border:none;padding:6px 12px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;align-items:center;gap:4px">⚡ TAKE CONTROL</button>
+            <iframe id="live-iframe" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;display:none" allow="camera;microphone;fullscreen" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock" scrolling="yes"></iframe>
             <div id="live-empty" style="margin-top:28px">START A TASK TO SEE LIVE VIEW</div>
             <div id="live-footer">
               <span id="live-status">● IDLE</span>
@@ -451,20 +452,54 @@ function selectTask(task) {
   document.getElementById('live-niche').textContent = [task.config?.niche?.toUpperCase(), task.config?.city?.toUpperCase()].filter(Boolean).join(' · ')
   document.getElementById('live-box').classList.toggle('captcha', task.status==='paused_captcha')
   document.getElementById('captcha-bar').classList.toggle('show', task.status==='paused_captcha')
-  if (task.liveUrl && task.liveUrl.startsWith('http')) { showLiveIframe(task.liveUrl) } else if (screenshots[task.taskId]) showScreenshot(screenshots[task.taskId])
+  if (task.liveUrl && task.liveUrl.startsWith('http')) { showLiveIframe(task.liveUrl, task.status, task.needsLogin) } else if (screenshots[task.taskId]) showScreenshot(screenshots[task.taskId])
   if (task.status==='running'||task.status==='paused_captcha') connectWS(task.taskId)
 }
 
-function showLiveIframe(url) {
+function showLiveIframe(url, status, needsLogin) {
   const iframe = document.getElementById('live-iframe')
   const img = document.getElementById('live-img')
   const empty = document.getElementById('live-empty')
-  if (url && url.startsWith('http')) {
+  const takeControl = document.getElementById('take-control-btn')
+
+  if (status === 'complete') {
+    iframe.style.display = 'none'
+    iframe.src = ''
+    img.style.display = 'none'
+    empty.style.display = 'flex'
+    empty.textContent = '✓ Task complete'
+    if (takeControl) takeControl.style.display = 'none'
+    return
+  }
+
+  if (status === 'error') {
+    iframe.style.display = 'none'
+    iframe.src = ''
+    img.style.display = 'none'
+    empty.style.display = 'flex'
+    empty.textContent = '✗ Task failed'
+    if (takeControl) takeControl.style.display = 'none'
+    return
+  }
+
+  if (!url || !url.startsWith('http')) return
+
+  // Show take control button always when live URL exists
+  if (takeControl) {
+    takeControl.style.display = 'flex'
+    takeControl.onclick = () => window.open(url, '_blank')
+  }
+
+  if (needsLogin || status === 'waiting') {
+    // Login/CAPTCHA needed — show iframe
     iframe.src = url
     iframe.style.display = 'block'
     img.style.display = 'none'
     empty.style.display = 'none'
-    document.getElementById('live-url').textContent = url
+  } else {
+    // Normal running — show screenshots, hide iframe
+    iframe.style.display = 'none'
+    empty.style.display = 'none'
   }
 }
 
