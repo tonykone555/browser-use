@@ -1,14 +1,20 @@
+import asyncio
 import os
 import json
 import re
-import time
-import requests
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
 import firebase_admin
 from firebase_admin import credentials, firestore
+from steel import Steel
+from browser_use import Agent
+from browser_use.browser.session import BrowserSession
+from langchain_groq import ChatGroq
 
+# ============================================================
+# Firebase
+# ============================================================
 if not firebase_admin._apps:
     cred = credentials.Certificate({
         "type": "service_account",
@@ -21,12 +27,8 @@ if not firebase_admin._apps:
 
 db = firestore.client()
 
-BROWSER_USE_API_KEY = os.environ.get("BROWSER_USE_API_KEY", "")
-BU_BASE = "https://api.browser-use.com/api/v2"
-HEADERS = {"X-Browser-Use-API-Key": BROWSER_USE_API_KEY, "Content-Type": "application/json"}
-
 # ============================================================
-# Helpers
+# Logging
 # ============================================================
 def log(task_id: str, msg: str, log_type: str = "info"):
     print(f"[{log_type.upper()}] {msg}")
@@ -37,18 +39,19 @@ def log(task_id: str, msg: str, log_type: str = "info"):
         "timestamp": int(datetime.now().timestamp() * 1000),
     }
     try:
-        db.collection("assix_tasks").document(task_id).collection("logs").add(entry)
         task_ref = db.collection("assix_tasks").document(task_id)
         task_data = task_ref.get().to_dict() or {}
         recent_logs = task_data.get("recentLogs", [])
         recent_logs.append(entry)
-        if len(recent_logs) > 50:
-            recent_logs = recent_logs[-50:]
+        if len(recent_logs) > 100:
+            recent_logs = recent_logs[-100:]
         task_ref.update({"recentLogs": recent_logs})
     except Exception as e:
         print(f"Log error: {e}")
 
-
+# ============================================================
+# Lead saving
+# ============================================================
 def format_phone(raw: str) -> str:
     if not raw: return ""
     digits = re.sub(r"\D", "", raw)
@@ -56,7 +59,6 @@ def format_phone(raw: str) -> str:
     if len(digits) == 10: return "+1" + digits
     if len(digits) > 10: return "+1" + digits[-10:]
     return raw
-
 
 def save_lead(task_id: str, item: dict, platform: str):
     phone = format_phone(item.get("phone", ""))
@@ -72,29 +74,30 @@ def save_lead(task_id: str, item: dict, platform: str):
             "website": item.get("website", ""),
             "address": item.get("address", ""),
             "city": item.get("city", ""),
-            "market": "english_ca",
-            "leadType": "no_website" if not item.get("website") else "has_website",
             "source": platform,
             "createdAt": datetime.now().isoformat(),
             "sentToClose": False,
             "status": "new",
         })
-        print(f"Lead saved: {item.get('name')} {phone}")
+        print(f"✓ Lead saved: {item.get('name')} {phone}")
     except Exception as e:
         print(f"Save lead error: {e}")
 
-
 def parse_results(text: str) -> list:
+    # Clean escaped quotes first
+    cleaned = text.replace('\\"', '"').replace('\\n', ' ')
     try:
-        match = re.search(r"\[[\s\S]*\]", text)
+        match = re.search(r"\[[\s\S]*\]", cleaned)
         if match: return json.loads(match.group(0))
     except Exception: pass
     return []
 
-
-def cleanup_stuck_tasks():
+# ============================================================
+# Cleanup stuck tasks
+# ============================================================
+def cleanup_stuck():
     try:
-        stuck = db.collection("assix_tasks").where("status", "==", "running").limit(20).get()
+        stuck = db.collection("assix_tasks").where("status", "==", "running").limit(10).get()
         cutoff = datetime.now() - timedelta(minutes=35)
         for doc in stuck:
             data = doc.to_dict()
@@ -108,195 +111,197 @@ def cleanup_stuck_tasks():
     except Exception as e:
         print(f"Cleanup error: {e}")
 
-
 # ============================================================
-# Build goal
+# Build goal from task config
 # ============================================================
 def build_goal(task_type: str, config: dict) -> str:
+    # Dynamic tasks from Console — use goal as-is
     if task_type in ("dynamic", "universal"):
         return config.get("goal", "")
 
     niche = config.get("niche", "")
     city = config.get("city", "")
-    max_leads = config.get("maxLeads", 50)
+    max_leads = config.get("maxLeads", 10)
     targets = config.get("targets", [])
     message = config.get("message", "")
 
     if task_type == "google_maps_scrape":
         return f"""Go to https://www.google.com/maps/search/{quote(niche + ' in ' + city)}
-For each business listing in the left panel:
-1. Click the listing to open its details
-2. Extract: business name, phone number, website URL, full address
-3. Go back to results list and click the next listing
+For each business in the left panel:
+1. Click it to open details
+2. Extract: name, phone, website, address
+3. Go back and click the next one
 4. Repeat until you have {max_leads} businesses with phone numbers
-CRITICAL: Never call done until you have {max_leads} results.
-Output ALL results as JSON array:
-[{{"name": "...", "phone": "...", "website": "...", "address": "..."}}]"""
+CRITICAL: Do not stop until you have {max_leads} results.
+Output as JSON array: [{{"name":"...","phone":"...","website":"...","address":"..."}}]"""
 
     elif task_type == "pages_jaunes_scrape":
         return f"""Go to https://www.pagesjaunes.ca/search/si/{quote(niche)}/{quote(city)}
-Extract from each listing: name, phone, website, address.
-Paginate until you have {max_leads} results.
-Output as JSON array: [{{"name": "...", "phone": "...", "website": "...", "address": "..."}}]"""
+Extract name, phone, website, address from each listing.
+Get {max_leads} results across pages.
+Output as JSON array: [{{"name":"...","phone":"...","website":"...","address":"..."}}]"""
 
     elif task_type == "instagram_dm":
         return f"""Go to https://www.instagram.com
-Send this message to each user: {', '.join(targets)}
+Send this message to: {', '.join(targets)}
 Message: "{message}"
-For each user: visit their profile, click Message, type and send."""
+For each: open profile → Message → type → send."""
 
     elif task_type == "whatsapp_outreach":
-        return f"""Go to https://web.whatsapp.com and wait for it to load.
-Send this message to each number: {', '.join(targets)}
-Message: "{message}"
-For each number go to: https://web.whatsapp.com/send?phone=NUMBER then type and send."""
+        return f"""Go to https://web.whatsapp.com
+For each number, go to: https://web.whatsapp.com/send?phone=NUMBER
+Type this message and press Enter: "{message}"
+Numbers: {', '.join(targets)}"""
 
     else:
         goal = config.get("goal", task_type)
         url = config.get("url", "")
         return f"Go to {url}\n{goal}" if url else goal
 
-
-# ============================================================
-# Browser-use Cloud API v2
-# ============================================================
-def start_bu_task(goal: str) -> dict:
-    res = requests.post(f"{BU_BASE}/tasks", headers=HEADERS, json={"task": goal})
-    print(f"Start task response: {res.status_code} {res.text[:200]}")
-    res.raise_for_status()
-    return res.json()
-
-
-def get_bu_task(bu_task_id: str) -> dict:
-    res = requests.get(f"{BU_BASE}/tasks/{bu_task_id}", headers=HEADERS)
-    res.raise_for_status()
-    return res.json()
-
-
-def stop_bu_task(bu_task_id: str):
-    try:
-        requests.post(f"{BU_BASE}/tasks/{bu_task_id}/stop", headers=HEADERS)
-    except Exception: pass
-
-
 # ============================================================
 # Main
 # ============================================================
-def main():
-    print("Assix browser-use CLOUD runner starting...")
-    cleanup_stuck_tasks()
+async def main():
+    print("Assix agent starting...")
+    cleanup_stuck()
 
-    all_tasks = db.collection("assix_tasks").where("status", "==", "queued").limit(10).get()
-    if not all_tasks:
-        print("No pending tasks. Exiting.")
+    # Get oldest queued task
+    tasks = db.collection("assix_tasks").where("status", "==", "queued").limit(10).get()
+    if not tasks:
+        print("No queued tasks. Exiting.")
         return
 
-    task_doc = sorted(all_tasks, key=lambda d: d.to_dict().get("createdAt", ""))[0]
+    task_doc = sorted(tasks, key=lambda d: d.to_dict().get("createdAt", ""))[0]
     task = task_doc.to_dict()
     task_id = task["taskId"]
     task_type = task["taskType"]
     config = task.get("config", {})
 
-    print(f"Found task: {task_id} — {task_type}")
+    print(f"Task: {task_id} — {task_type}")
 
+    # Claim it
     db.collection("assix_tasks").document(task_id).update({
         "status": "running",
         "claimedAt": datetime.now().isoformat(),
-        "runner": "browser-use-cloud",
+        "runner": "steel-browser-use",
     })
 
-    log(task_id, f"Starting: {task_type}")
+    log(task_id, f"Starting {task_type}...")
     goal = build_goal(task_type, config)
-    log(task_id, f"Goal: {goal[:80]}...")
+    log(task_id, f"Goal: {goal[:100]}...")
 
-    log(task_id, "Starting browser-use cloud task...")
-    bu_data = start_bu_task(goal)
-    bu_task_id = bu_data.get("id") or bu_data.get("task_id")
-    live_url = bu_data.get("live_url", "")
+    # Setup LLM
+    llm = ChatGroq(
+        model="llama-3.3-70b-versatile",
+        api_key=os.environ["GROQ_API_KEY"],
+        temperature=0,
+    )
 
-    print(f"Browser-use task ID: {bu_task_id}")
-    print(f"Live URL: {live_url}")
+    # Start Steel cloud browser
+    steel_client = Steel(steel_api_key=os.environ.get("STEEL_API_KEY", ""))
+    session = steel_client.sessions.create()
+    
+    live_url = session.session_viewer_url or ""
+    print(f"Steel session: {session.id}")
+    print(f"Live view: {live_url}")
 
+    # Save live URL to Firebase so dashboard shows it
     db.collection("assix_tasks").document(task_id).update({
-        "buTaskId": bu_task_id,
         "liveUrl": live_url,
+        "steelSessionId": session.id,
     })
 
     if live_url:
-        log(task_id, f"🔴 Live view: {live_url}", "success")
+        log(task_id, f"🔴 Live: {live_url}", "success")
 
-    # Poll for completion
-    max_wait = 25 * 60
-    poll_interval = 5
-    elapsed = 0
-    step = 0
+    # Connect browser-use to Steel via CDP
+    steel_cdp_url = f"wss://connect.steel.dev?apiKey={os.environ.get('STEEL_API_KEY', '')}&sessionId={session.id}"
+    
+    from browser_use.browser.browser import Browser, BrowserConfig
+    browser = Browser(config=BrowserConfig(cdp_url=steel_cdp_url))
 
-    while elapsed < max_wait:
-        time.sleep(poll_interval)
-        elapsed += poll_interval
+    agent = Agent(
+        task=goal,
+        llm=llm,
+        browser=browser,
+        use_vision=False,
+    )
 
+    step_count = [0]
+
+    def on_step(state, output, steps):
+        step_count[0] = steps
+        action = ""
         try:
-            bu_status = get_bu_task(bu_task_id)
-            status = bu_status.get("status", "")
-            output = bu_status.get("output", "") or bu_status.get("result", "") or ""
-
-            step += 1
-            if step % 6 == 0:
-                log(task_id, f"Status: {status} ({elapsed}s elapsed)")
-
+            if output and output.action:
+                action = str(output.action[0])[:80]
+        except Exception: pass
+        print(f"[Step {steps}] {action}")
+        try:
             db.collection("assix_tasks").document(task_id).update({
-                "progress": step,
-                "progressPct": min(int((elapsed / max_wait) * 100), 99),
+                "progress": steps,
+                "progressPct": min(steps * 2, 99),
                 "status": "running",
             })
+            entry = {
+                "time": datetime.now().strftime("%H:%M:%S"),
+                "msg": f"→ Step {steps}: {action}" if action else f"→ Step {steps}",
+                "type": "info",
+                "timestamp": int(datetime.now().timestamp() * 1000),
+            }
+            task_ref = db.collection("assix_tasks").document(task_id)
+            task_data = task_ref.get().to_dict() or {}
+            recent_logs = task_data.get("recentLogs", [])
+            recent_logs.append(entry)
+            if len(recent_logs) > 100:
+                recent_logs = recent_logs[-100:]
+            task_ref.update({"recentLogs": recent_logs})
+        except Exception: pass
 
-            if status in ("paused", "waiting_for_human"):
-                log(task_id, "⚠ Agent paused — needs your input. Open the live view link.", "warning")
-                db.collection("assix_tasks").document(task_id).update({
-                    "status": "waiting",
-                    "waitingMsg": f"Agent needs your input. Open: {live_url}",
-                })
-                wait_elapsed = 0
-                while wait_elapsed < 600:
-                    time.sleep(10)
-                    wait_elapsed += 10
-                    bu_status = get_bu_task(bu_task_id)
-                    if bu_status.get("status") not in ("paused", "waiting_for_human"):
-                        db.collection("assix_tasks").document(task_id).update({"status": "running"})
-                        break
-                continue
+    agent.register_new_step_callback(on_step)
 
-            if status in ("finished", "completed", "done", "failed", "stopped", "error"):
-                log(task_id, f"Task finished: {status}", "success" if status in ("finished", "completed", "done") else "error")
+    try:
+        log(task_id, "Agent running...")
+        history = await agent.run(max_steps=60)
 
-                is_scraping = task_type in ["google_maps_scrape", "pages_jaunes_scrape"]
-                results = parse_results(str(output)) if is_scraping else []
+        success = history.is_successful()
+        final_result = history.final_result() or ""
 
-                if is_scraping and results:
-                    log(task_id, f"Saving {len(results)} leads...")
-                    for item in results:
-                        save_lead(task_id, item, task_type)
-                    log(task_id, f"✓ {len(results)} leads saved", "success")
+        log(task_id, f"Done. Success: {success}", "success" if success else "warning")
+        if final_result:
+            log(task_id, f"Result preview: {final_result[:200]}")
 
-                db.collection("assix_tasks").document(task_id).update({
-                    "status": "complete" if status in ("finished", "completed", "done") else "error",
-                    "results": results,
-                    "finalResult": str(output)[:5000],
-                    "completedAt": datetime.now().isoformat(),
-                    "progress": len(results) if results else step,
-                    "progressPct": 100,
-                })
+        is_scraping = task_type in ["google_maps_scrape", "pages_jaunes_scrape"]
+        results = parse_results(final_result) if is_scraping else []
 
-                log(task_id, f"✓ Complete. {len(results)} items found.", "success")
-                return
+        if results:
+            log(task_id, f"Saving {len(results)} leads...")
+            for item in results:
+                save_lead(task_id, item, task_type)
+            log(task_id, f"✓ {len(results)} leads saved", "success")
 
-        except Exception as e:
-            print(f"Poll error: {e}")
+        db.collection("assix_tasks").document(task_id).update({
+            "status": "complete",
+            "results": results,
+            "finalResult": final_result[:5000],
+            "completedAt": datetime.now().isoformat(),
+            "progress": len(results) if results else step_count[0],
+            "progressPct": 100,
+        })
 
-    stop_bu_task(bu_task_id)
-    log(task_id, "Task timed out after 25 minutes", "error")
-    db.collection("assix_tasks").document(task_id).update({"status": "error"})
+        log(task_id, f"✓ Complete — {len(results)} items found", "success")
+
+    except Exception as e:
+        log(task_id, f"Error: {str(e)}", "error")
+        db.collection("assix_tasks").document(task_id).update({"status": "error"})
+        raise
+
+    finally:
+        try:
+            steel_client.sessions.release(session.id)
+            print(f"Steel session released: {session.id}")
+        except Exception: pass
 
 
 if __name__ == "__main__":
-    main()
+    asyncio.run(main())
