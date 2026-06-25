@@ -1,2 +1,5 @@
+browser-use==0.1.40
+steel-sdk
 firebase-admin
-requests
+langchain-groq
+playwright
