@@ -125,23 +125,24 @@ Get {max_leads} results. Output as JSON array: [{{"name":"...","phone":"...","we
     elif task_type == "airbnb_outreach":
         message = config.get("message", "")
         max_messages = config.get("maxMessages", 10)
-        return f"""Go to https://www.airbnb.com/s/{quote(city)}/homes and wait for listings to load.
-For each listing:
-1. Click the listing to open it
-2. Scroll down to find the "Contact Host" or "Message Host" button (it is in the Meet your Host section near the bottom)
-3. Click it
-4. A message dialog will appear - type this exact message: "{message}"
-5. Click Send
-6. Go back to search results (browser back button)
-7. Click the next listing and repeat
+        return f"""Go to https://www.airbnb.com/s/{quote(city)}/homes
 
-IMPORTANT NOTES:
-- You must be logged in first. If you see a login page, complete Google login before proceeding
-- If dates are required before messaging, enter any dates 2 weeks from today
-- The button may say "Contact Host" or "Message Host" - both work
-- Do NOT book anything - just send the message
-- Repeat for {max_messages} different hosts
-- Keep going until you have sent {max_messages} messages"""
+Wait for the page to load. You will see a grid of apartment listings.
+
+Step 1: Click on the FIRST listing card (click the photo or title of the first apartment you see)
+Step 2: You are now on the listing detail page. Scroll DOWN slowly until you see a section called "Meet your Host" with a button that says "Contact" or "Message"
+Step 3: Click that Contact/Message button
+Step 4: A message box appears. Type exactly: "{message}"
+Step 5: Click the Send button
+Step 6: Press the browser back button twice to return to the search results
+Step 7: Click the SECOND listing and repeat steps 2-6
+Step 8: Continue until you have messaged {max_messages} hosts
+
+RULES:
+- If Airbnb asks you to login, complete the login first then continue
+- If dates are required, enter check-in 2 weeks from today, checkout 3 weeks from today
+- Never book or pay anything
+- The message must be sent exactly as written above"""
 
     else:
         goal = config.get("goal", task_type)
