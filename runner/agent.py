@@ -239,15 +239,5 @@ async def main():
         except Exception: pass
 
 
-async def loop():
-    print("Assix worker — polling for tasks...")
-    while True:
-        try:
-            await main()
-        except Exception as e:
-            print(f"Error: {e}")
-        await asyncio.sleep(10)
-
-
 if __name__ == "__main__":
-    asyncio.run(loop())
+    asyncio.run(main())
