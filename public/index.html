@@ -803,6 +803,27 @@ async function runNow() {
   } catch(e) { alert('Cannot reach server: ' + e.message) }
 }
 
+async function saveSession(platform) {
+  const task = activeTask
+  if (!task || !task.steelSessionId) {
+    alert('No active Steel session. Start a task first, login manually, then save the session.')
+    return
+  }
+  try {
+    const res = await fetch(CONFIG.serverUrl + '/api/sessions/save', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ platform, steelSessionId: task.steelSessionId })
+    })
+    const data = await res.json()
+    if (data.success) {
+      alert(`✓ ${platform} session saved (${data.cookieCount} cookies). Future tasks will be auto-logged in.`)
+    } else {
+      alert('Failed: ' + data.error)
+    }
+  } catch(e) { alert('Error: ' + e.message) }
+}
+
 async function stopActiveTask() {
   if (!activeTask) return
   dismissTask(activeTask.taskId)
