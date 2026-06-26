@@ -462,44 +462,33 @@ function showLiveIframe(url, status, needsLogin) {
   const empty = document.getElementById('live-empty')
   const takeControl = document.getElementById('take-control-btn')
 
-  if (status === 'complete') {
-    iframe.style.display = 'none'
-    iframe.src = ''
-    img.style.display = 'none'
+  // Keep iframe visible after complete/error so user can see what happened
+  if (status === 'complete' || status === 'error') {
+    if (url && url.startsWith('http') && iframe.src && iframe.src !== 'about:blank') {
+      // Keep showing iframe
+      if (takeControl) {
+        takeControl.style.display = 'flex'
+        takeControl.onclick = () => window.open(url, '_blank')
+      }
+      return
+    }
     empty.style.display = 'flex'
-    empty.textContent = '✓ Task complete'
-    if (takeControl) takeControl.style.display = 'none'
-    return
-  }
-
-  if (status === 'error') {
+    empty.textContent = status === 'complete' ? '✓ Task complete' : '✗ Task failed'
     iframe.style.display = 'none'
-    iframe.src = ''
-    img.style.display = 'none'
-    empty.style.display = 'flex'
-    empty.textContent = '✗ Task failed'
-    if (takeControl) takeControl.style.display = 'none'
     return
   }
 
   if (!url || !url.startsWith('http')) return
 
-  // Show take control button always when live URL exists
+  // Always show iframe when task is running + take control button
+  iframe.src = url
+  iframe.style.display = 'block'
+  img.style.display = 'none'
+  empty.style.display = 'none'
+
   if (takeControl) {
     takeControl.style.display = 'flex'
     takeControl.onclick = () => window.open(url, '_blank')
-  }
-
-  if (needsLogin || status === 'waiting') {
-    // Login/CAPTCHA needed — show iframe
-    iframe.src = url
-    iframe.style.display = 'block'
-    img.style.display = 'none'
-    empty.style.display = 'none'
-  } else {
-    // Normal running — show screenshots, hide iframe
-    iframe.style.display = 'none'
-    empty.style.display = 'none'
   }
 }
 
