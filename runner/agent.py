@@ -84,15 +84,19 @@ def parse_results(text: str) -> list:
 def cleanup_stuck():
     try:
         stuck = db.collection("assix_tasks").where("status", "==", "running").limit(10).get()
-        cutoff = datetime.now() - timedelta(minutes=35)
+        cutoff = datetime.now() - timedelta(minutes=10)
         for doc in stuck:
             data = doc.to_dict()
             claimed = data.get("claimedAt", "")
-            if claimed:
-                try:
-                    if datetime.fromisoformat(claimed) < cutoff:
-                        doc.reference.update({"status": "error"})
-                except Exception: pass
+            if not claimed:
+                print(f"Resetting unclaimed running task: {doc.id}")
+                doc.reference.update({"status": "queued"})
+                continue
+            try:
+                if datetime.fromisoformat(claimed) < cutoff:
+                    print(f"Cleaning stuck task: {doc.id}")
+                    doc.reference.update({"status": "error"})
+            except Exception: pass
     except Exception as e:
         print(f"Cleanup error: {e}")
 
@@ -130,6 +134,11 @@ async def main():
     tasks = db.collection("assix_tasks").where("status", "==", "queued").limit(10).get()
     if not tasks:
         print("No queued tasks.")
+        # Debug: show what tasks exist
+        all_tasks = db.collection("assix_tasks").limit(5).get()
+        for t in all_tasks:
+            d = t.to_dict()
+            print(f"  Existing task: {d.get('taskId','')} status={d.get('status','')} type={d.get('taskType','')}")
         return
 
     task_doc = sorted(tasks, key=lambda d: d.to_dict().get("createdAt", ""))[0]
@@ -152,7 +161,7 @@ async def main():
 
     # Use smaller model to save tokens
     llm = ChatCerebras(
-        model="llama-3.3-70b",
+        model="llama3.3-70b",
         api_key=os.environ["CEREBRAS_API_KEY"],
         temperature=0,
     )
