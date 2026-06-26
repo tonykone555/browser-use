@@ -462,34 +462,36 @@ function showLiveIframe(url, status, needsLogin) {
   const empty = document.getElementById('live-empty')
   const takeControl = document.getElementById('take-control-btn')
 
-  // Keep iframe visible after complete/error so user can see what happened
-  if (status === 'complete' || status === 'error') {
-    if (url && url.startsWith('http') && iframe.src && iframe.src !== 'about:blank') {
-      // Keep showing iframe
-      if (takeControl) {
-        takeControl.style.display = 'flex'
-        takeControl.onclick = () => window.open(url, '_blank')
-      }
-      return
-    }
+  // Hide iframe always - use button approach instead
+  if (iframe) { iframe.style.display = 'none'; iframe.src = '' }
+  if (img) img.style.display = 'none'
+
+  if (!url || !url.startsWith('http')) {
     empty.style.display = 'flex'
-    empty.textContent = status === 'complete' ? '✓ Task complete' : '✗ Task failed'
-    iframe.style.display = 'none'
+    empty.innerHTML = 'START A TASK TO SEE LIVE VIEW'
+    if (takeControl) takeControl.style.display = 'none'
     return
   }
 
-  if (!url || !url.startsWith('http')) return
+  // Show live session button
+  const statusLabel = status === 'complete' ? '✓ Complete' : status === 'error' ? '✗ Failed' : '🔴 RUNNING'
+  const btnColor = status === 'complete' ? '#22c55e' : status === 'error' ? '#ef4444' : '#6366f1'
+  
+  empty.style.display = 'flex'
+  empty.style.flexDirection = 'column'
+  empty.style.gap = '12px'
+  empty.innerHTML = `
+    <div style="font-size:10px;color:#52525B;letter-spacing:.1em">${statusLabel}</div>
+    <button onclick="window.open('${url}', '_blank')" style="background:${btnColor};color:white;border:none;padding:14px 24px;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;width:80%">
+      👁 WATCH LIVE
+    </button>
+    <button onclick="window.open('${url}', '_blank')" style="background:transparent;color:${btnColor};border:1px solid ${btnColor};padding:10px 24px;border-radius:10px;font-size:11px;font-weight:600;cursor:pointer;width:80%">
+      ⚡ TAKE CONTROL
+    </button>
+    <div style="font-size:8px;color:#484f58;text-align:center">Opens Steel session in Safari</div>
+  `
 
-  // Always show iframe when task is running + take control button
-  iframe.src = url
-  iframe.style.display = 'block'
-  img.style.display = 'none'
-  empty.style.display = 'none'
-
-  if (takeControl) {
-    takeControl.style.display = 'flex'
-    takeControl.onclick = () => window.open(url, '_blank')
-  }
+  if (takeControl) takeControl.style.display = 'none'
 }
 
 function showScreenshot(src) {
