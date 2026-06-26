@@ -122,6 +122,20 @@ Output ONLY this JSON format and nothing else:
 Extract name, phone, website, address from each listing.
 Get {max_leads} results. Output as JSON array: [{{"name":"...","phone":"...","website":"...","address":"..."}}]"""
 
+    elif task_type == "airbnb_outreach":
+        message = config.get("message", "")
+        max_messages = config.get("maxMessages", 10)
+        return f"""Go to https://www.airbnb.com/s/{quote(city)}/homes
+1. If you see a login page, click "Continue with Google" and complete the login
+2. Wait for listings to load
+3. Click the first listing
+4. Find and click "Contact Host" button
+5. Type this exact message: "{message}"
+6. Click Send
+7. Go back to search results
+8. Repeat for {max_messages} different hosts
+CRITICAL: Send to {max_messages} hosts. Keep going until done."""
+
     else:
         goal = config.get("goal", task_type)
         url = config.get("url", "")
@@ -169,8 +183,8 @@ async def main():
     # Start Steel session
     steel_client = Steel(steel_api_key=os.environ.get("STEEL_API_KEY", ""))
     session = steel_client.sessions.create()
-    # Always use viewer.steel.dev for direct browser view
-    live_url = f"https://viewer.steel.dev/?session={session.id}"
+    # Use app.steel.dev sessions viewer
+    live_url = getattr(session, "session_viewer_url", "") or f"https://app.steel.dev/sessions/{session.id}"
 
     print(f"Steel session: {session.id}")
     print(f"Live URL: {live_url}")
