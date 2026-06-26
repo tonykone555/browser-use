@@ -135,12 +135,14 @@ LOGIN INSTRUCTIONS (do this first if not already logged in):
 1. Go to https://www.airbnb.com/login
 2. Type email: {email}
 3. Click Next or Continue
-4. Look for "Continue with password" or "Use password" option and click it
-5. Type password: {password}
-6. Click Log in or Submit
-7. If a verification code is sent to email - wait 60 seconds for user to enter it manually via live view
-8. If any popup appears (promotions, notifications, cookies) - click X, Dismiss or No thanks
-9. Once logged in go to https://www.airbnb.com/s/{quote(city)}/homes
+4. If you see a code verification screen, click "Try another way"
+5. Click "Enter your password" option
+6. Type password: {password}
+7. Click Log in or Submit
+8. If a verification code is sent to email - click "Try another way" then "Enter your password"
+9. If any popup appears (promotions, notifications, cookies) - click X, Dismiss or No thanks
+9. After successful login, immediately navigate to https://www.airbnb.com/s/{quote(city)}/homes
+10. Wait for listings to load then start messaging hosts
 """
         else:
             login_instructions = "If you see a login page, wait 120 seconds for the user to login manually then continue."
@@ -227,6 +229,21 @@ async def main():
         log(task_id, f"🔴 Live: {live_url}", "success")
         log(task_id, f"👆 Tap WATCH LIVE to see browser", "info")
 
+    # Inject saved cookies into Steel session if available
+    if saved_cookies:
+        try:
+            import requests as req
+            for cookie in saved_cookies:
+                req.post(
+                    f"https://api.steel.dev/v1/sessions/{session.id}/cookies",
+                    headers={"Steel-Api-Key": os.environ.get("STEEL_API_KEY", "")},
+                    json={"cookies": [cookie]},
+                    timeout=5
+                )
+            log(task_id, "✓ Session cookies injected — already logged in", "success")
+        except Exception as e:
+            print(f"Cookie injection error: {e}")
+
     # Connect browser-use to Steel via CDP
     cdp_url = f"wss://connect.steel.dev?apiKey={os.environ.get('STEEL_API_KEY', '')}&sessionId={session.id}"
     browser = Browser(config=BrowserConfig(cdp_url=cdp_url))
@@ -238,6 +255,18 @@ async def main():
         use_vision=False,
         max_input_tokens=40000,
     )
+
+    # Load saved session cookies if available
+    saved_cookies = []
+    if task_type == "airbnb_outreach":
+        try:
+            session_doc = db.collection("assix_sessions").document("airbnb").get()
+            if session_doc.exists:
+                saved_cookies = session_doc.to_dict().get("cookies", [])
+                if saved_cookies:
+                    log(task_id, f"✓ Loaded saved Airbnb session ({len(saved_cookies)} cookies)", "success")
+        except Exception as e:
+            print(f"Session load error: {e}")
 
     try:
         log(task_id, "Agent running...")
