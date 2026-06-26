@@ -489,7 +489,9 @@ IMPORTANT RULES:
 - Support tasks like: login to site, send messages, scrape listings, post ads, fill forms, extract data
 
 When you have enough info to launch, respond with JSON:
-{"response": "your message to user", "launchTask": true, "goal": "detailed task description for browser-use"}
+{"response": "msg", "launchTask": true, "goal": null, "taskType": "google_maps_scrape", "config": {"niche": "...", "city": "...", "maxLeads": 10}}
+For Airbnb outreach: {"response": "msg", "launchTask": true, "goal": null, "taskType": "airbnb_outreach", "config": {"city": "...", "message": "...", "maxMessages": 10}}
+For any other task: {"response": "msg", "launchTask": true, "goal": "full detailed task", "taskType": "dynamic", "config": {}}
 
 When still gathering info, respond with JSON:
 {"response": "your next question", "launchTask": false, "goal": null}
