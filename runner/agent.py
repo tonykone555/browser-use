@@ -152,7 +152,7 @@ async def main():
 
     # Use smaller model to save tokens
     llm = ChatGroq(
-        model="llama-3.1-8b-instant",
+        model="llama-3.3-70b-versatile",
         api_key=os.environ["GROQ_API_KEY"],
         temperature=0,
     )
@@ -160,7 +160,8 @@ async def main():
     # Start Steel session
     steel_client = Steel(steel_api_key=os.environ.get("STEEL_API_KEY", ""))
     session = steel_client.sessions.create()
-    live_url = getattr(session, 'session_viewer_url', '') or f"https://viewer.steel.dev/?session={session.id}"
+    # Always use viewer.steel.dev for direct browser view
+    live_url = f"https://viewer.steel.dev/?session={session.id}"
 
     print(f"Steel session: {session.id}")
     print(f"Live URL: {live_url}")
@@ -168,7 +169,6 @@ async def main():
     db.collection("assix_tasks").document(task_id).update({
         "liveUrl": live_url,
         "steelSessionId": session.id,
-        "steelLoginUrl": f"https://viewer.steel.dev/?session={session.id}",
     })
 
     if live_url:
@@ -184,6 +184,7 @@ async def main():
         llm=llm,
         browser=browser,
         use_vision=False,
+        max_input_tokens=40000,
     )
 
     try:
