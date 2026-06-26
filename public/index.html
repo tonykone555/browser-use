@@ -720,18 +720,31 @@ async function sendMsg() {
     const data = await res.json()
     chat[chat.length-1] = {role:'agent', msg: data.response}
     renderChat()
-    if (data.launchTask && data.goal) {
-      chat.push({role:'agent', msg:'🚀 Launching task now...'})
+    if (data.launchTask) {
+      chat.push({role:'agent', msg:'Launching task now...'})
       renderChat()
-      const taskRes = await fetch(CONFIG.serverUrl+'/api/task/dynamic', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({goal: data.goal, context: ''})
-      })
-      const {taskId} = await taskRes.json()
-      connectWS(taskId)
-      fetchTasks()
-      setTimeout(() => setTab('operator'), 1000)
+      let taskRes
+      if (data.taskType && data.taskType !== 'dynamic' && data.config) {
+        // Structured task (google_maps_scrape, airbnb_outreach, etc)
+        taskRes = await fetch(CONFIG.serverUrl+'/api/task/start', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({taskType: data.taskType, config: data.config, label: data.taskType})
+        })
+      } else if (data.goal) {
+        // Dynamic AI task
+        taskRes = await fetch(CONFIG.serverUrl+'/api/task/dynamic', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({goal: data.goal, context: ''})
+        })
+      }
+      if (taskRes) {
+        const {taskId} = await taskRes.json()
+        connectWS(taskId)
+        fetchTasks()
+        setTimeout(() => setTab('operator'), 1000)
+      }
     }
   } catch(e) {
     chat[chat.length-1] = {role:'agent', msg:'Cannot reach server.'}
