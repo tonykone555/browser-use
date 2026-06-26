@@ -203,9 +203,21 @@ async def main():
         success = history.is_successful()
         final_result = history.final_result() or ""
 
+        # Also try to get data from action results if final_result is empty
+        if not final_result or len(final_result) < 50:
+            try:
+                all_results = history.action_results()
+                for r in reversed(all_results):
+                    extracted = str(r.extracted_content or "")
+                    if len(extracted) > 100:
+                        final_result = extracted
+                        break
+            except Exception:
+                pass
+
         log(task_id, f"Done. Success: {success}", "success" if success else "warning")
         if final_result:
-            log(task_id, f"Result: {final_result[:300]}")
+            log(task_id, f"Result preview: {final_result[:200]}")
 
         is_scraping = task_type in ["google_maps_scrape", "pages_jaunes_scrape"]
         results = parse_results(final_result) if is_scraping else []
