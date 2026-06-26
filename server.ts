@@ -442,6 +442,75 @@ app.post('/api/sessions/save', async (req, res) => {
   }
 });
 
+
+// ============================================================
+// Skyvern Credentials Management
+// ============================================================
+
+app.post('/api/credentials/save', async (req, res) => {
+  try {
+    const { platform, username, password } = req.body;
+    if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
+    
+    // Save to Skyvern vault via their API
+    const r = await axios.post(
+      'https://api.skyvern.com/api/v1/credentials',
+      {
+        name: `Assix - ${platform}`,
+        credential_type: 'password',
+        credential: { username, password }
+      },
+      { headers: { 'x-api-key': process.env.SKYVERN_API_KEY || '', 'Content-Type': 'application/json' } }
+    );
+    
+    const credentialId = r.data?.credential_id || r.data?.id;
+    
+    // Save credential ID to Firebase for reference
+    await db.collection('assix_credentials').doc(platform).set({
+      platform,
+      username,
+      skyvernCredentialId: credentialId,
+      savedAt: new Date().toISOString(),
+    });
+    
+    res.json({ success: true, credentialId });
+  } catch (err: any) {
+    res.status(500).json({ error: err.response?.data || err.message });
+  }
+});
+
+app.get('/api/credentials/all', async (req, res) => {
+  try {
+    const snap = await db.collection('assix_credentials').get();
+    res.json(snap.docs.map(d => ({
+      platform: d.id,
+      username: d.data().username,
+      savedAt: d.data().savedAt,
+    })));
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/credentials/:platform', async (req, res) => {
+  try {
+    const doc = await db.collection('assix_credentials').doc(req.params.platform).get();
+    if (doc.exists) {
+      const credId = doc.data()?.skyvernCredentialId;
+      if (credId) {
+        await axios.delete(
+          `https://api.skyvern.com/api/v1/credentials/${credId}`,
+          { headers: { 'x-api-key': process.env.SKYVERN_API_KEY || '' } }
+        ).catch(() => {});
+      }
+      await doc.ref.delete();
+    }
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/sessions/all', async (req, res) => {
   try {
     const s = await db.collection('assix_sessions').get();
