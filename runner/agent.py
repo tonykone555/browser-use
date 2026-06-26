@@ -220,22 +220,18 @@ async def main():
 
     def screenshot_loop():
         import time
-        import requests as req
         while not stop_screenshots.is_set():
             try:
-                r = req.get(
-                    f"https://api.steel.dev/v1/sessions/{session.id}/screenshot",
-                    headers={"Steel-Api-Key": os.environ.get("STEEL_API_KEY", "")},
-                    timeout=5
-                )
-                if r.status_code == 200:
-                    img_b64 = base64.b64encode(r.content).decode("utf-8")
+                # Use Steel SDK to get screenshot
+                img_bytes = steel_client.sessions.screenshot(session.id)
+                if img_bytes:
+                    img_b64 = base64.b64encode(img_bytes).decode("utf-8")
                     db.collection("assix_tasks").document(task_id).update({
                         "latestScreenshot": img_b64,
                         "screenshotAt": int(datetime.now().timestamp() * 1000),
                     })
-            except Exception:
-                pass
+            except Exception as e:
+                print(f"Screenshot error: {e}")
             time.sleep(3)
 
     screenshot_thread = threading.Thread(target=screenshot_loop, daemon=True)
