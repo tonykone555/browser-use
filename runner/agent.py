@@ -2,8 +2,6 @@ import asyncio
 import os
 import json
 import re
-import base64
-import threading
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
@@ -152,8 +150,9 @@ async def main():
     goal = build_goal(task_type, config)
     log(task_id, f"Goal: {goal[:80]}...")
 
+    # Use smaller model to save tokens
     llm = ChatGroq(
-        model="llama-3.3-70b-versatile",
+        model="llama-3.1-8b-instant",
         api_key=os.environ["GROQ_API_KEY"],
         temperature=0,
     )
@@ -161,41 +160,22 @@ async def main():
     # Start Steel session
     steel_client = Steel(steel_api_key=os.environ.get("STEEL_API_KEY", ""))
     session = steel_client.sessions.create()
-    live_url = getattr(session, 'session_viewer_url', '') or ''
-    
+    live_url = getattr(session, 'session_viewer_url', '') or f"https://viewer.steel.dev/?session={session.id}"
+
     print(f"Steel session: {session.id}")
     print(f"Live URL: {live_url}")
 
     db.collection("assix_tasks").document(task_id).update({
         "liveUrl": live_url,
         "steelSessionId": session.id,
+        "steelLoginUrl": f"https://viewer.steel.dev/?session={session.id}",
     })
 
     if live_url:
         log(task_id, f"🔴 Live: {live_url}", "success")
+        log(task_id, f"👆 Tap WATCH LIVE to see browser", "info")
 
-    # Screenshot loop in background thread
-    stop_screenshots = threading.Event()
-
-    def screenshot_loop():
-        import time
-        while not stop_screenshots.is_set():
-            try:
-                img_bytes = steel_client.sessions.screenshot(session.id)
-                if img_bytes:
-                    img_b64 = base64.b64encode(img_bytes).decode("utf-8")
-                    db.collection("assix_tasks").document(task_id).update({
-                        "latestScreenshot": img_b64,
-                        "screenshotAt": int(datetime.now().timestamp() * 1000),
-                    })
-            except Exception as e:
-                print(f"Screenshot error: {e}")
-            time.sleep(3)
-
-    screenshot_thread = threading.Thread(target=screenshot_loop, daemon=True)
-    screenshot_thread.start()
-
-    # Connect browser-use to Steel
+    # Connect browser-use to Steel via CDP
     cdp_url = f"wss://connect.steel.dev?apiKey={os.environ.get('STEEL_API_KEY', '')}&sessionId={session.id}"
     browser = Browser(config=BrowserConfig(cdp_url=cdp_url))
 
@@ -209,8 +189,6 @@ async def main():
     try:
         log(task_id, "Agent running...")
         history = await agent.run(max_steps=60)
-
-        stop_screenshots.set()
 
         success = history.is_successful()
         final_result = history.final_result() or ""
@@ -240,7 +218,6 @@ async def main():
         log(task_id, f"✓ Complete — {len(results)} items", "success")
 
     except Exception as e:
-        stop_screenshots.set()
         log(task_id, f"Error: {str(e)}", "error")
         db.collection("assix_tasks").document(task_id).update({"status": "error"})
         raise
