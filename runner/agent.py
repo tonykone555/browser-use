@@ -152,7 +152,7 @@ async def main():
 
     # Use smaller model to save tokens
     llm = ChatGroq(
-        model="llama-3.3-70b-versatile",
+        model="mixtral-8x7b-32768",
         api_key=os.environ["GROQ_API_KEY"],
         temperature=0,
     )
