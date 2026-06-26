@@ -125,16 +125,23 @@ Get {max_leads} results. Output as JSON array: [{{"name":"...","phone":"...","we
     elif task_type == "airbnb_outreach":
         message = config.get("message", "")
         max_messages = config.get("maxMessages", 10)
-        return f"""Go to https://www.airbnb.com/s/{quote(city)}/homes
-1. If you see a login page, click "Continue with Google" and complete the login
-2. Wait for listings to load
-3. Click the first listing
-4. Find and click "Contact Host" button
-5. Type this exact message: "{message}"
-6. Click Send
-7. Go back to search results
-8. Repeat for {max_messages} different hosts
-CRITICAL: Send to {max_messages} hosts. Keep going until done."""
+        return f"""Go to https://www.airbnb.com/s/{quote(city)}/homes and wait for listings to load.
+For each listing:
+1. Click the listing to open it
+2. Scroll down to find the "Contact Host" or "Message Host" button (it is in the Meet your Host section near the bottom)
+3. Click it
+4. A message dialog will appear - type this exact message: "{message}"
+5. Click Send
+6. Go back to search results (browser back button)
+7. Click the next listing and repeat
+
+IMPORTANT NOTES:
+- You must be logged in first. If you see a login page, complete Google login before proceeding
+- If dates are required before messaging, enter any dates 2 weeks from today
+- The button may say "Contact Host" or "Message Host" - both work
+- Do NOT book anything - just send the message
+- Repeat for {max_messages} different hosts
+- Keep going until you have sent {max_messages} messages"""
 
     else:
         goal = config.get("goal", task_type)
