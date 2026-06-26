@@ -139,10 +139,12 @@ Step 7: Click the SECOND listing and repeat steps 2-6
 Step 8: Continue until you have messaged {max_messages} hosts
 
 RULES:
-- If Airbnb asks you to login, complete the login first then continue
+- If you see a login page, DO NOT call done. Wait 120 seconds for the user to login manually, then continue
+- After login you will be redirected back to the listing - continue from there
 - If dates are required, enter check-in 2 weeks from today, checkout 3 weeks from today
 - Never book or pay anything
-- The message must be sent exactly as written above"""
+- The message must be sent exactly as written above
+- NEVER call done until you have sent messages to {max_messages} hosts"""
 
     else:
         goal = config.get("goal", task_type)
