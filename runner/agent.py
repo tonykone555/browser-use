@@ -8,7 +8,7 @@ from urllib.parse import quote
 import firebase_admin
 from firebase_admin import credentials, firestore
 from browser_use import Agent, Browser, BrowserConfig
-from langchain_groq import ChatGroq
+from langchain_cerebras import ChatCerebras
 from steel import Steel
 
 if not firebase_admin._apps:
@@ -151,9 +151,9 @@ async def main():
     log(task_id, f"Goal: {goal[:80]}...")
 
     # Use smaller model to save tokens
-    llm = ChatGroq(
-        model="mixtral-8x7b-32768",
-        api_key=os.environ["GROQ_API_KEY"],
+    llm = ChatCerebras(
+        model="llama-3.3-70b",
+        api_key=os.environ["CEREBRAS_API_KEY"],
         temperature=0,
     )
 
