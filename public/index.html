@@ -128,7 +128,7 @@ select,input[type=text],input[type=number],input[type=password],textarea{width:1
       <span class="brand">ASSIX<span>.</span></span>
       <span class="nav-link" onclick="setTab('tasks')">Tasks</span>
       <span class="nav-link" onclick="setTab('history')">History</span>
-      <span class="nav-link" onclick="setTab('settings')">Settings</span>
+      <span class="nav-link" onclick="setTab('settings'); loadCredentials()">Settings</span>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
       <div id="status-pill" class="status-pill" style="border:1px solid #F59E0B;color:#F59E0B">SERVER OFFLINE</div>
@@ -801,6 +801,62 @@ async function runNow() {
     const data = await res.json()
     alert(data.success ? '⚡ GitHub runner triggered!' : 'Trigger failed: ' + (data.error || 'unknown'))
   } catch(e) { alert('Cannot reach server: ' + e.message) }
+}
+
+// ============================================================
+// Credentials Management
+// ============================================================
+async function loadCredentials() {
+  try {
+    const res = await fetch(CONFIG.serverUrl + '/api/credentials/all')
+    const creds = await res.json()
+    const list = document.getElementById('credentials-list')
+    if (!list) return
+    if (!creds.length) {
+      list.innerHTML = '<div style="font-size:9px;color:#52525B;padding:8px 0">No saved credentials</div>'
+      return
+    }
+    list.innerHTML = creds.map(c => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1A1A1A">
+        <div>
+          <div style="font-size:10px;font-weight:600;letter-spacing:.05em">${c.platform.toUpperCase()}</div>
+          <div style="font-size:9px;color:#52525B">${c.username}</div>
+        </div>
+        <button onclick="deleteCredential('${c.platform}')" style="background:transparent;color:#ef4444;border:1px solid #ef4444;padding:3px 8px;border-radius:4px;font-size:8px;cursor:pointer">DELETE</button>
+      </div>
+    `).join('')
+  } catch(e) { console.error('Load credentials error:', e) }
+}
+
+async function saveCredential() {
+  const platform = document.getElementById('cred-platform')?.value
+  const username = document.getElementById('cred-username')?.value?.trim()
+  const password = document.getElementById('cred-password')?.value?.trim()
+  if (!platform || !username || !password) { alert('Fill all fields'); return }
+  try {
+    const res = await fetch(CONFIG.serverUrl + '/api/credentials/save', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ platform, username, password })
+    })
+    const data = await res.json()
+    if (data.success) {
+      alert(`✓ ${platform} credentials saved`)
+      document.getElementById('cred-username').value = ''
+      document.getElementById('cred-password').value = ''
+      loadCredentials()
+    } else {
+      alert('Failed: ' + (data.error?.message || data.error || 'Unknown error'))
+    }
+  } catch(e) { alert('Error: ' + e.message) }
+}
+
+async function deleteCredential(platform) {
+  if (!confirm(`Delete ${platform} credentials?`)) return
+  try {
+    await fetch(CONFIG.serverUrl + '/api/credentials/' + platform, { method: 'DELETE' })
+    loadCredentials()
+  } catch(e) { alert('Error: ' + e.message) }
 }
 
 async function saveSession(platform) {
