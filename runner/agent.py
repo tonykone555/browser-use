@@ -265,6 +265,36 @@ async def main():
                     "progressPct": min(int((elapsed / max_wait) * 100), 99),
                 })
 
+                # Take screenshot and save to Firebase
+                try:
+                    import requests as req
+                    screenshot_res = req.get(
+                        f"https://api.skyvern.com/api/v1/tasks/{task_run_id}/screenshot",
+                        headers={"x-api-key": os.environ.get("SKYVERN_API_KEY", "")},
+                        timeout=5
+                    )
+                    if screenshot_res.status_code == 200:
+                        import base64
+                        img_b64 = base64.b64encode(screenshot_res.content).decode("utf-8")
+                        db.collection("assix_tasks").document(task_id).update({
+                            "latestScreenshot": img_b64,
+                            "screenshotAt": int(datetime.now().timestamp() * 1000),
+                        })
+                except Exception as se:
+                    pass
+
+                # Detect if agent needs interaction
+                if status in ("requires_action", "waiting_for_human", "paused"):
+                    log(task_id, "⚠ Agent needs your input — tap TAKE CONTROL", "warning")
+                    db.collection("assix_tasks").document(task_id).update({
+                        "needsInteraction": True,
+                        "interactionUrl": live_url,
+                    })
+                elif status == "running":
+                    db.collection("assix_tasks").document(task_id).update({
+                        "needsInteraction": False,
+                    })
+
                 if status in ("completed", "failed", "terminated", "canceled"):
                     output = getattr(status_run, 'output', '') or ''
                     extracted = getattr(status_run, 'extracted_information', '') or ''
