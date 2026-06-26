@@ -139,6 +139,9 @@ setInterval(async () => {
         total: data.total || 0,
         progressPct: data.progressPct || 0,
         status: data.status,
+        liveUrl: data.liveUrl || '',
+        needsInteraction: data.needsInteraction || false,
+        latestScreenshot: data.latestScreenshot || null,
       }));
 
       const existingLogs = taskLogs.get(taskId) || [];
