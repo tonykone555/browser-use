@@ -109,13 +109,13 @@ def build_goal(task_type: str, config: dict) -> str:
 
     if task_type == "google_maps_scrape":
         return f"""Go to https://www.google.com/maps/search/{quote(niche + ' in ' + city)}
-For each business in the left panel:
-1. Click it to open details
-2. Extract: name, phone, website, address
-3. Go back and click the next one
-4. Repeat until you have {max_leads} businesses with phone numbers
-CRITICAL: Do not stop until you have {max_leads} results.
-Output as JSON array: [{{"name":"...","phone":"...","website":"...","address":"..."}}]"""
+Wait for the left panel to load with business listings.
+Extract ALL visible businesses directly from the left panel — name, phone, website, address.
+The phone numbers and websites are visible directly in the list without clicking.
+Collect {max_leads} businesses with phone numbers.
+CRITICAL: Extract from the list directly. Do NOT click individual listings.
+When you have {max_leads} results call done immediately with this JSON:
+[{{"name":"...","phone":"...","website":"...","address":"..."}}]"""
 
     elif task_type == "pages_jaunes_scrape":
         return f"""Go to https://www.pagesjaunes.ca/search/si/{quote(niche)}/{quote(city)}
