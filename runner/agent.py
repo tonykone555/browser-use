@@ -7,9 +7,6 @@ from urllib.parse import quote
 
 import firebase_admin
 from firebase_admin import credentials, firestore
-from browser_use import Agent, Browser, BrowserConfig
-from langchain_cerebras import ChatCerebras
-from steel import Steel
 
 if not firebase_admin._apps:
     cred = credentials.Certificate({
@@ -74,11 +71,37 @@ def save_lead(task_id: str, item: dict, platform: str):
         print(f"Save lead error: {e}")
 
 def parse_results(text: str) -> list:
-    cleaned = text.replace('\\"', '"').replace('\\n', ' ')
+    if not text: return []
     try:
-        match = re.search(r"\[[\s\S]*\]", cleaned)
-        if match: return json.loads(match.group(0))
+        cleaned = text.replace('\\"', '"').replace('\\n', ' ')
+        match = re.search(r'\[[\s\S]*?\]', cleaned)
+        if match:
+            result = json.loads(match.group(0))
+            if isinstance(result, list) and len(result) > 0:
+                return result
     except Exception: pass
+
+    # Fallback: parse Google Maps text format
+    try:
+        items = []
+        business_blocks = re.split(r'(?=Share[A-Z])', text)
+        for block in business_blocks:
+            if not block.strip(): continue
+            phone_match = re.search(r'(\+?1?[\s\-\.]?\(?\d{3}\)?[\s\-\.]\d{3}[\s\-\.]\d{4})', block)
+            if not phone_match: continue
+            phone = phone_match.group(1).strip()
+            name_match = re.search(r'Share([^\d\n]+?)(?:\s+[\d\.]+)', block)
+            name = name_match.group(1).strip() if name_match else ''
+            if not name: continue
+            website_match = re.search(r'\[Website\]\(([^\)]+)\)', block)
+            website = website_match.group(1) if website_match else ''
+            addr_match = re.search(r'·\s+([^·\n]+?)\s*(?:Open|Closed)', block)
+            address = addr_match.group(1).strip() if addr_match else ''
+            items.append({"name": name, "phone": phone, "website": website, "address": address})
+        if items:
+            return items
+    except Exception as e:
+        print(f"Fallback parse error: {e}")
     return []
 
 def cleanup_stuck():
@@ -89,90 +112,78 @@ def cleanup_stuck():
             data = doc.to_dict()
             claimed = data.get("claimedAt", "")
             if not claimed:
-                print(f"Resetting unclaimed running task: {doc.id}")
                 doc.reference.update({"status": "queued"})
                 continue
             try:
                 if datetime.fromisoformat(claimed) < cutoff:
-                    print(f"Cleaning stuck task: {doc.id}")
                     doc.reference.update({"status": "error"})
             except Exception: pass
     except Exception as e:
         print(f"Cleanup error: {e}")
 
-def build_goal(task_type: str, config: dict) -> str:
-    if task_type in ("dynamic", "universal"):
-        return config.get("goal", "")
-    niche = config.get("niche", "")
+def build_goal(task_type: str, config: dict) -> tuple:
+    """Returns (url, goal) tuple"""
     city = config.get("city", "")
+    niche = config.get("niche", "")
     max_leads = config.get("maxLeads", 10)
+    message = config.get("message", "")
+    max_messages = config.get("maxMessages", 10)
+    email = config.get("email", "") or os.environ.get("AIRBNB_EMAIL", "")
+    password = config.get("password", "") or os.environ.get("AIRBNB_PASSWORD", "")
 
     if task_type == "google_maps_scrape":
-        return f"""Go to https://www.google.com/maps/search/{quote(niche + ' in ' + city)}
-Wait for the results to load.
-Use extract_content to get all business data from the left panel in ONE action.
-Then immediately call done with a JSON array of the results.
-Do NOT click anything. Do NOT visit any websites.
-Extract name, phone, website, address for {max_leads} businesses directly from the list.
-Output ONLY this JSON format and nothing else:
+        url = f"https://www.google.com/maps/search/{quote(niche + ' in ' + city)}"
+        goal = f"""Wait for the results to load.
+Extract all visible businesses from the left panel in ONE action.
+Get name, phone, website, address for {max_leads} businesses.
+Output ONLY this JSON format:
 [{{"name":"...","phone":"...","website":"...","address":"..."}}]"""
+        return url, goal
 
     elif task_type == "pages_jaunes_scrape":
-        return f"""Go to https://www.pagesjaunes.ca/search/si/{quote(niche)}/{quote(city)}
-Extract name, phone, website, address from each listing.
-Get {max_leads} results. Output as JSON array: [{{"name":"...","phone":"...","website":"...","address":"..."}}]"""
+        url = f"https://www.pagesjaunes.ca/search/si/{quote(niche)}/{quote(city)}"
+        goal = f"""Extract name, phone, website, address from each listing.
+Get {max_leads} results.
+Output as JSON: [{{"name":"...","phone":"...","website":"...","address":"..."}}]"""
+        return url, goal
 
     elif task_type == "airbnb_outreach":
-        message = config.get("message", "")
-        max_messages = config.get("maxMessages", 10)
-        email = config.get("email", "") or os.environ.get("AIRBNB_EMAIL", "")
-        password = config.get("password", "") or os.environ.get("AIRBNB_PASSWORD", "")
-        
-        login_instructions = ""
+        url = f"https://www.airbnb.com/s/{quote(city)}/homes"
+        login_part = ""
         if email and password:
-            login_instructions = f"""
-LOGIN INSTRUCTIONS (do this first if not already logged in):
-1. Go to https://www.airbnb.com/login
-2. Type email: {email}
-3. Click Next or Continue
-4. If you see a code verification screen, click "Try another way"
-5. Click "Enter your password" option
-6. Type password: {password}
-7. Click Log in or Submit
-8. If a verification code is sent to email - click "Try another way" then "Enter your password"
-9. If any popup appears (promotions, notifications, cookies) - click X, Dismiss or No thanks
-9. After successful login, immediately navigate to https://www.airbnb.com/s/{quote(city)}/homes
-10. Wait for listings to load then start messaging hosts
+            login_part = f"""
+If you see a login page:
+1. Enter email: {email}
+2. Click Next
+3. If asked for code, click "Try another way" then "Enter your password"
+4. Enter password: {password}
+5. Click Log in
+6. After login navigate to: https://www.airbnb.com/s/{quote(city)}/homes
 """
-        else:
-            login_instructions = "If you see a login page, wait 120 seconds for the user to login manually then continue."
-
-        return f"""IMPORTANT: Your starting URL is https://www.airbnb.com/s/{quote(city)}/homes — navigate there immediately if you are on a blank page.
-
-Go to https://www.airbnb.com/s/{quote(city)}/homes
-
-{login_instructions}
-
-MESSAGING STEPS (repeat for {max_messages} hosts):
-1. Click on a listing card (click the photo or title)
-2. On the listing page, scroll down to find "Meet your Host" section
-3. Click the "Contact Host" or "Message" button
-4. If asked for dates, enter check-in 2 weeks from today, checkout 3 weeks from today
-5. In the message box type exactly: "{message}"
+        goal = f"""{login_part}
+For each listing:
+1. Click the listing photo or title
+2. Scroll down to "Meet your Host" section
+3. Click "Contact Host" or "Message" button
+4. If dates required: check-in 2 weeks from today, checkout 3 weeks from today
+5. Type message: "{message}"
 6. Click Send
-7. Press back button to return to search results
-8. Click next listing and repeat
+7. Go back and repeat for next listing
+8. Dismiss any popups (X, No thanks, Dismiss)
 
-POPUP HANDLING:
-- If any popup appears at any time (promotions, cookies, notifications, sign up) - close it immediately by clicking X, Dismiss, or No thanks
-- Never book or pay anything
-- Keep going until {max_messages} messages sent
-- NEVER call done early"""
+Send to {max_messages} hosts total. Never book or pay anything."""
+        return url, goal
+
+    elif task_type in ("dynamic", "universal"):
+        goal = config.get("goal", "")
+        url = config.get("url", "https://www.google.com")
+        return url, goal
 
     else:
         goal = config.get("goal", task_type)
-        url = config.get("url", "")
-        return f"Go to {url}\n{goal}" if url else goal
+        url = config.get("url", "https://www.google.com")
+        return url, goal
+
 
 async def main():
     print("Assix agent starting...")
@@ -181,11 +192,10 @@ async def main():
     tasks = db.collection("assix_tasks").where("status", "==", "queued").limit(10).get()
     if not tasks:
         print("No queued tasks.")
-        # Debug: show what tasks exist
         all_tasks = db.collection("assix_tasks").limit(5).get()
         for t in all_tasks:
             d = t.to_dict()
-            print(f"  Existing task: {d.get('taskId','')} status={d.get('status','')} type={d.get('taskType','')}")
+            print(f"  Task: {d.get('taskId','')} status={d.get('status','')} type={d.get('taskType','')}")
         return
 
     task_doc = sorted(tasks, key=lambda d: d.to_dict().get("createdAt", ""))[0]
@@ -199,151 +209,103 @@ async def main():
     db.collection("assix_tasks").document(task_id).update({
         "status": "running",
         "claimedAt": datetime.now().isoformat(),
-        "runner": "steel-browser-use",
+        "runner": "skyvern",
     })
 
     log(task_id, f"Starting {task_type}...")
-    goal = build_goal(task_type, config)
+    url, goal = build_goal(task_type, config)
+    log(task_id, f"URL: {url}")
     log(task_id, f"Goal: {goal[:80]}...")
 
-    # Use smaller model to save tokens
-    llm = ChatCerebras(
-        model="gpt-oss-120b",
-        api_key=os.environ["CEREBRAS_API_KEY"],
-        temperature=0,
-    )
-
-    # Start Steel session
-    steel_client = Steel(steel_api_key=os.environ.get("STEEL_API_KEY", ""))
-    session = steel_client.sessions.create(timeout=1800000)  # 30 minutes in ms
-    # Use app.steel.dev sessions viewer
-    live_url = getattr(session, "session_viewer_url", "") or f"https://app.steel.dev/sessions/{session.id}"
-
-    print(f"Steel session: {session.id}")
-    print(f"Live URL: {live_url}")
-
-    db.collection("assix_tasks").document(task_id).update({
-        "liveUrl": live_url,
-        "steelSessionId": session.id,
-    })
-
-    if live_url:
-        log(task_id, f"🔴 Live: {live_url}", "success")
-        log(task_id, f"👆 Tap WATCH LIVE to see browser", "info")
-
-    # Inject saved cookies into Steel session if available
-    if saved_cookies:
-        try:
-            import requests as req
-            for cookie in saved_cookies:
-                req.post(
-                    f"https://api.steel.dev/v1/sessions/{session.id}/cookies",
-                    headers={"Steel-Api-Key": os.environ.get("STEEL_API_KEY", "")},
-                    json={"cookies": [cookie]},
-                    timeout=5
-                )
-            log(task_id, "✓ Session cookies injected — already logged in", "success")
-        except Exception as e:
-            print(f"Cookie injection error: {e}")
-
-    # Connect browser-use to Steel via CDP
-    cdp_url = f"wss://connect.steel.dev?apiKey={os.environ.get('STEEL_API_KEY', '')}&sessionId={session.id}"
-    browser = Browser(config=BrowserConfig(cdp_url=cdp_url))
-
-    agent = Agent(
-        task=goal,
-        llm=llm,
-        browser=browser,
-        use_vision=False,
-        max_input_tokens=40000,
-        max_failures=5,
-    )
-
-    # Load saved session cookies if available
-    saved_cookies = []
-    if task_type == "airbnb_outreach":
-        try:
-            session_doc = db.collection("assix_sessions").document("airbnb").get()
-            if session_doc.exists:
-                saved_cookies = session_doc.to_dict().get("cookies", [])
-                if saved_cookies:
-                    log(task_id, f"✓ Loaded saved Airbnb session ({len(saved_cookies)} cookies)", "success")
-        except Exception as e:
-            print(f"Session load error: {e}")
-
     try:
-        log(task_id, "Agent running...")
-        history = await agent.run(max_steps=60)
+        from skyvern import Skyvern
+        skyvern_client = Skyvern(api_key=os.environ.get("SKYVERN_API_KEY", ""))
 
-        success = history.is_successful()
-        final_result = history.final_result() or ""
+        log(task_id, "Starting Skyvern browser task...")
 
-        # Also try to get data from action results if final_result is empty
-        if not final_result or len(final_result) < 50:
-            try:
-                all_results = history.action_results()
-                for r in reversed(all_results):
-                    extracted = str(r.extracted_content or "")
-                    if len(extracted) > 100:
-                        final_result = extracted
-                        break
-            except Exception:
-                pass
+        # Run task via Skyvern
+        run = await skyvern_client.agent.run_task(
+            url=url,
+            goal=goal,
+            title=f"Assix: {task_type}",
+        )
 
-        # Auto-save session cookies after task completes
-        if task_type == "airbnb_outreach":
-            try:
-                import requests as req
-                r = req.get(
-                    f"https://api.steel.dev/v1/sessions/{session.id}/cookies",
-                    headers={"Steel-Api-Key": os.environ.get("STEEL_API_KEY", "")},
-                    timeout=5
-                )
-                cookies = r.json().get("cookies", [])
-                if cookies:
-                    db.collection("assix_sessions").document("airbnb").set({
-                        "cookies": cookies,
-                        "savedAt": datetime.now().isoformat(),
-                    })
-                    print(f"✓ Airbnb session auto-saved: {len(cookies)} cookies")
-                    log(task_id, f"✓ Airbnb session saved for next run", "success")
-            except Exception as e:
-                print(f"Auto-save session error: {e}")
+        task_run_id = run.task_id
+        live_url = getattr(run, 'live_url', '') or f"https://app.skyvern.com/tasks/{task_run_id}"
 
-        log(task_id, f"Done. Success: {success}", "success" if success else "warning")
-        if final_result:
-            log(task_id, f"Result preview: {final_result[:200]}")
-
-        is_scraping = task_type in ["google_maps_scrape", "pages_jaunes_scrape"]
-        results = parse_results(final_result) if is_scraping else []
-
-        if results:
-            log(task_id, f"Saving {len(results)} leads...")
-            for item in results:
-                save_lead(task_id, item, task_type)
-            log(task_id, f"✓ {len(results)} leads saved", "success")
+        print(f"Skyvern task ID: {task_run_id}")
+        print(f"Live URL: {live_url}")
 
         db.collection("assix_tasks").document(task_id).update({
-            "status": "complete",
-            "results": results,
-            "finalResult": final_result[:5000],
-            "completedAt": datetime.now().isoformat(),
-            "progress": len(results) if results else 0,
-            "progressPct": 100,
+            "skyvernTaskId": task_run_id,
+            "liveUrl": live_url,
         })
 
-        log(task_id, f"✓ Complete — {len(results)} items", "success")
+        log(task_id, f"Live: {live_url}", "success")
+        log(task_id, "Agent running — check live view for progress", "info")
+
+        # Poll for completion
+        import time
+        max_wait = 25 * 60
+        elapsed = 0
+
+        while elapsed < max_wait:
+            time.sleep(10)
+            elapsed += 10
+
+            try:
+                status_run = await skyvern_client.agent.get_task(task_id=task_run_id)
+                status = getattr(status_run, 'status', '') or ''
+
+                if elapsed % 60 == 0:
+                    log(task_id, f"Status: {status} ({elapsed}s)")
+
+                db.collection("assix_tasks").document(task_id).update({
+                    "progress": elapsed // 10,
+                    "progressPct": min(int((elapsed / max_wait) * 100), 99),
+                })
+
+                if status in ("completed", "failed", "terminated", "canceled"):
+                    output = getattr(status_run, 'output', '') or ''
+                    extracted = getattr(status_run, 'extracted_information', '') or ''
+                    final_result = str(output or extracted or '')
+
+                    log(task_id, f"Finished: {status}", "success" if status == "completed" else "error")
+                    if final_result:
+                        log(task_id, f"Result: {final_result[:200]}")
+
+                    is_scraping = task_type in ["google_maps_scrape", "pages_jaunes_scrape"]
+                    results = parse_results(final_result) if is_scraping else []
+
+                    if results:
+                        log(task_id, f"Saving {len(results)} leads...")
+                        for item in results:
+                            save_lead(task_id, item, task_type)
+                        log(task_id, f"✓ {len(results)} leads saved", "success")
+
+                    db.collection("assix_tasks").document(task_id).update({
+                        "status": "complete" if status == "completed" else "error",
+                        "results": results,
+                        "finalResult": final_result[:5000],
+                        "completedAt": datetime.now().isoformat(),
+                        "progress": len(results) if results else elapsed // 10,
+                        "progressPct": 100,
+                    })
+
+                    log(task_id, f"✓ Complete — {len(results)} items", "success")
+                    return
+
+            except Exception as e:
+                print(f"Poll error: {e}")
+
+        # Timeout
+        log(task_id, "Task timed out", "error")
+        db.collection("assix_tasks").document(task_id).update({"status": "error"})
 
     except Exception as e:
         log(task_id, f"Error: {str(e)}", "error")
         db.collection("assix_tasks").document(task_id).update({"status": "error"})
         raise
-
-    finally:
-        try:
-            steel_client.sessions.release(session.id)
-            print(f"Steel session released: {session.id}")
-        except Exception: pass
 
 
 if __name__ == "__main__":
