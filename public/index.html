@@ -456,113 +456,72 @@ function selectTask(task) {
   if (task.status==='running'||task.status==='paused_captcha') connectWS(task.taskId)
 }
 
-let steelLoggedIn = localStorage.getItem('steelLoggedIn') === '1'
 let currentLiveUrl = ''
 
 function showLiveIframe(url, status, needsLogin) {
   const iframe = document.getElementById('live-iframe')
   const img = document.getElementById('live-img')
   const empty = document.getElementById('live-empty')
-  const takeControl = document.getElementById('take-control-btn')
 
   if (img) img.style.display = 'none'
-  if (takeControl) takeControl.style.display = 'none'
 
-  // Build viewer URL
-  const viewerUrl = url && url.includes('steel.dev') && !url.includes('viewer.steel.dev')
-    ? url.replace('app.steel.dev/sessions/', 'viewer.steel.dev/?session=')
-    : url
-
-  currentLiveUrl = viewerUrl
-
-  if (!viewerUrl || !viewerUrl.startsWith('http')) {
+  if (!url || !url.startsWith('http')) {
     if (iframe) { iframe.style.display = 'none'; iframe.src = '' }
     empty.style.display = 'flex'
     empty.innerHTML = 'START A TASK TO SEE LIVE VIEW'
     return
   }
 
+  // Convert app.steel.dev URL to viewer URL
+  const viewerUrl = url.includes('app.steel.dev/sessions/')
+    ? url.replace('app.steel.dev/sessions/', 'viewer.steel.dev/?session=')
+    : url
+
+  currentLiveUrl = viewerUrl
+
   const isComplete = status === 'complete'
   const isError = status === 'error'
-  const statusText = isComplete ? 'COMPLETE' : isError ? 'ERROR' : 'LIVE'
   const accentColor = isComplete ? '#22c55e' : isError ? '#ef4444' : '#6366F1'
 
-  empty.style.display = 'flex'
-  empty.style.flexDirection = 'column'
-  empty.style.alignItems = 'center'
-  empty.style.gap = '8px'
-  empty.style.padding = '16px'
-
-  if (steelLoggedIn) {
-    // Show iframe embedded + buttons
-    if (iframe) {
-      iframe.src = viewerUrl
-      iframe.style.display = 'block'
-      empty.style.display = 'none'
-    } else {
-      renderLiveButtons(viewerUrl, accentColor, statusText, true)
-    }
-  } else {
-    if (iframe) { iframe.style.display = 'none'; iframe.src = '' }
-    renderLiveButtons(viewerUrl, accentColor, statusText, false)
-  }
-}
-
-function renderLiveButtons(url, color, statusText, loggedIn) {
-  const empty = document.getElementById('live-empty')
-  empty.style.display = 'flex'
-
-  if (!loggedIn) {
-    empty.innerHTML = `
-      <div style="font-size:9px;color:#52525B;letter-spacing:.12em;margin-bottom:2px">${statusText}</div>
-      <div style="font-size:10px;color:#71717A;text-align:center;line-height:1.4;margin-bottom:4px">Sign in to Steel once<br>to activate live view</div>
-      <button onclick="loginToSteel('${url}')" style="background:${color};color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;width:80%;letter-spacing:.05em">
-        SIGN IN TO STEEL
-      </button>
-      <button onclick="loadIframe('${url}')" style="background:transparent;color:#52525B;border:1px solid #27272A;padding:8px 20px;border-radius:6px;font-size:10px;font-weight:500;cursor:pointer;width:80%;letter-spacing:.05em">
-        OPEN WITHOUT LOGIN
-      </button>
-    `
-  } else {
-    empty.innerHTML = `
-      <div style="font-size:9px;color:#52525B;letter-spacing:.12em;margin-bottom:4px">${statusText}</div>
-      <button onclick="loadIframe('${url}')" style="background:${color};color:#fff;border:none;padding:10px 20px;border-radius:6px;font-size:11px;font-weight:600;cursor:pointer;width:80%;letter-spacing:.05em">
-        WATCH LIVE
-      </button>
-      <button onclick="window.open('${url}', '_blank')" style="background:transparent;color:${color};border:1px solid ${color};padding:8px 20px;border-radius:6px;font-size:10px;font-weight:500;cursor:pointer;width:80%;letter-spacing:.05em">
-        FULL SCREEN
-      </button>
-      <button onclick="steelLoggedIn=false;localStorage.removeItem('steelLoggedIn');showLiveIframe('${url}','running')" style="background:transparent;color:#3F3F46;border:none;padding:2px;font-size:8px;cursor:pointer;letter-spacing:.05em">
-        SWITCH ACCOUNT
-      </button>
-    `
-  }
-}
-
-function loadIframe(url) {
-  const iframe = document.getElementById('live-iframe')
-  const empty = document.getElementById('live-empty')
+  // Always load iframe directly — Steel login happens inside iframe
   if (iframe) {
-    iframe.src = url
+    if (iframe.src !== viewerUrl) {
+      iframe.src = viewerUrl
+    }
     iframe.style.display = 'block'
     empty.style.display = 'none'
-    // Add full screen button overlay
-    const box = iframe.parentElement
-    const fsBtn = document.createElement('button')
-    fsBtn.textContent = 'FULL SCREEN'
-    fsBtn.style.cssText = 'position:absolute;bottom:48px;right:8px;z-index:10;background:rgba(0,0,0,0.7);color:#fff;border:1px solid #3F3F46;padding:4px 8px;border-radius:4px;font-size:8px;font-weight:600;cursor:pointer;letter-spacing:.05em'
-    fsBtn.onclick = () => window.open(url, '_blank')
-    box.appendChild(fsBtn)
-  }
-}
 
-function loginToSteel(sessionUrl) {
-  window.open('https://app.steel.dev', '_blank')
-  setTimeout(() => {
-    steelLoggedIn = true
-    localStorage.setItem('steelLoggedIn', '1')
-    loadIframe(sessionUrl)
-  }, 4000)
+    // Add FULL SCREEN button and login helper
+    const existingBtn = document.getElementById('fs-overlay-btn')
+    if (existingBtn) existingBtn.remove()
+    const existingHelper = document.getElementById('login-helper')
+    if (existingHelper) existingHelper.remove()
+
+    const fsBtn = document.createElement('button')
+    fsBtn.id = 'fs-overlay-btn'
+    fsBtn.textContent = 'FULL SCREEN'
+    fsBtn.style.cssText = `position:absolute;bottom:48px;right:8px;z-index:10;background:rgba(0,0,0,0.8);color:#fff;border:1px solid #3F3F46;padding:5px 10px;border-radius:4px;font-size:8px;font-weight:600;cursor:pointer;letter-spacing:.06em`
+    fsBtn.onclick = () => window.open(viewerUrl, '_blank')
+    iframe.parentElement.appendChild(fsBtn)
+
+    // Login helper banner at bottom of iframe
+    const helper = document.createElement('div')
+    helper.id = 'login-helper'
+    helper.style.cssText = `position:absolute;bottom:40px;left:0;right:0;z-index:10;background:rgba(0,0,0,0.85);padding:6px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px`
+    helper.innerHTML = `
+      <span style="font-size:8px;color:#71717A;letter-spacing:.05em">If login screen shows — sign in via full screen first</span>
+      <button onclick="window.open('${viewerUrl}','_blank')" style="background:#6366F1;color:#fff;border:none;padding:4px 10px;border-radius:4px;font-size:8px;font-weight:600;cursor:pointer;white-space:nowrap;letter-spacing:.05em">LOGIN FULL SCREEN</button>
+    `
+    iframe.parentElement.appendChild(helper)
+
+    // Hide helper after iframe loads successfully
+    iframe.onload = () => {
+      setTimeout(() => {
+        const h = document.getElementById('login-helper')
+        if (h) h.style.opacity = '0.3'
+      }, 3000)
+    }
+  }
 }
 
 function showScreenshot(src) {
