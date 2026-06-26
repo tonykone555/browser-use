@@ -161,7 +161,7 @@ async def main():
 
     # Use smaller model to save tokens
     llm = ChatCerebras(
-        model="llama3.3-70b",
+        model="gpt-oss-120b",
         api_key=os.environ["CEREBRAS_API_KEY"],
         temperature=0,
     )
