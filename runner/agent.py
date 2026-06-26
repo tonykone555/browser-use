@@ -125,26 +125,44 @@ Get {max_leads} results. Output as JSON array: [{{"name":"...","phone":"...","we
     elif task_type == "airbnb_outreach":
         message = config.get("message", "")
         max_messages = config.get("maxMessages", 10)
+        email = config.get("email", "") or os.environ.get("AIRBNB_EMAIL", "")
+        password = config.get("password", "") or os.environ.get("AIRBNB_PASSWORD", "")
+        
+        login_instructions = ""
+        if email and password:
+            login_instructions = f"""
+LOGIN INSTRUCTIONS (do this first if not already logged in):
+1. Go to https://www.airbnb.com/login
+2. Click "Continue with email"
+3. Type email: {email}
+4. Click Next
+5. Type password: {password}
+6. Click Log in
+7. If any popup appears (promotions, notifications, cookies) - click Dismiss, No thanks, or X to close it
+8. Once logged in go to https://www.airbnb.com/s/{quote(city)}/homes
+"""
+        else:
+            login_instructions = "If you see a login page, wait 120 seconds for the user to login manually then continue."
+
         return f"""Go to https://www.airbnb.com/s/{quote(city)}/homes
 
-Wait for the page to load. You will see a grid of apartment listings.
+{login_instructions}
 
-Step 1: Click on the FIRST listing card (click the photo or title of the first apartment you see)
-Step 2: You are now on the listing detail page. Scroll DOWN slowly until you see a section called "Meet your Host" with a button that says "Contact" or "Message"
-Step 3: Click that Contact/Message button
-Step 4: A message box appears. Type exactly: "{message}"
-Step 5: Click the Send button
-Step 6: Press the browser back button twice to return to the search results
-Step 7: Click the SECOND listing and repeat steps 2-6
-Step 8: Continue until you have messaged {max_messages} hosts
+MESSAGING STEPS (repeat for {max_messages} hosts):
+1. Click on a listing card (click the photo or title)
+2. On the listing page, scroll down to find "Meet your Host" section
+3. Click the "Contact Host" or "Message" button
+4. If asked for dates, enter check-in 2 weeks from today, checkout 3 weeks from today
+5. In the message box type exactly: "{message}"
+6. Click Send
+7. Press back button to return to search results
+8. Click next listing and repeat
 
-RULES:
-- If you see a login page, DO NOT call done. Wait 120 seconds for the user to login manually, then continue
-- After login you will be redirected back to the listing - continue from there
-- If dates are required, enter check-in 2 weeks from today, checkout 3 weeks from today
+POPUP HANDLING:
+- If any popup appears at any time (promotions, cookies, notifications, sign up) - close it immediately by clicking X, Dismiss, or No thanks
 - Never book or pay anything
-- The message must be sent exactly as written above
-- NEVER call done until you have sent messages to {max_messages} hosts"""
+- Keep going until {max_messages} messages sent
+- NEVER call done early"""
 
     else:
         goal = config.get("goal", task_type)
