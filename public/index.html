@@ -256,6 +256,7 @@ select,input[type=text],input[type=number],input[type=password],textarea{width:1
       <select id="task-type-select" onchange="renderTaskFields()">
         <option value="google_maps_scrape">Google Maps Scrape</option>
         <option value="pages_jaunes_scrape">Pages Jaunes Scrape</option>
+        <option value="airbnb_outreach">Airbnb Outreach</option>
         <option value="instagram_dm">Instagram DM Campaign</option>
         <option value="whatsapp_outreach">WhatsApp Outreach</option>
         <option value="market_research">Market Research</option>
@@ -294,6 +295,7 @@ const CONFIG = {
   quickTasks: [
     {id:'google_maps_scrape',label:'Google Maps Scrape'},
     {id:'pages_jaunes_scrape',label:'Pages Jaunes Scrape'},
+    {id:'airbnb_outreach',label:'Airbnb Outreach'},
     {id:'instagram_dm',label:'Instagram DM'},
     {id:'whatsapp_outreach',label:'WhatsApp Outreach'},
     {id:'market_research',label:'Market Research'},
@@ -905,6 +907,11 @@ function renderTaskFields() {
     html = `
       <div class="field"><div class="lbl" style="margin-bottom:6px">TOPIC</div><input type="text" placeholder="e.g. plumbers in Toronto" onchange="taskConfig.topic=this.value"/></div>
       <div class="field-last"><div class="lbl" style="margin-bottom:6px">GOAL</div><input type="text" placeholder="e.g. find pain points" onchange="taskConfig.goal=this.value"/></div>`
+  } else if (type==='airbnb_outreach') {
+    html = `
+      <div class="field"><div class="lbl" style="margin-bottom:6px">CITY</div><input type="text" placeholder="e.g. Miami, Paris, Montreal" onchange="taskConfig.city=this.value"/></div>
+      <div class="field"><div class="lbl" style="margin-bottom:6px">MESSAGE</div><textarea rows="4" placeholder="Hi, I came across your listing..." onchange="taskConfig.message=this.value"></textarea></div>
+      <div class="field-last"><div class="lbl" style="margin-bottom:6px">MAX MESSAGES</div><input type="number" value="10" onchange="taskConfig.maxMessages=parseInt(this.value)"/></div>`
   } else if (type==='dynamic') {
     html = `<div class="field-last"><div class="lbl" style="margin-bottom:6px">DESCRIBE YOUR GOAL</div><textarea rows="5" placeholder="e.g. Go to Pages Jaunes, search plumbers in Montreal, extract names and phones" onchange="taskConfig.goal=this.value"></textarea><div style="font-size:10px;color:#52525B;margin-top:6px">AI will plan and execute automatically</div></div>`
   }
