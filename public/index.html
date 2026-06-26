@@ -472,10 +472,8 @@ function showLiveIframe(url, status, needsLogin) {
     return
   }
 
-  // Convert app.steel.dev URL to viewer URL
-  const viewerUrl = url.includes('app.steel.dev/sessions/')
-    ? url.replace('app.steel.dev/sessions/', 'viewer.steel.dev/?session=')
-    : url
+  // Use URL as-is — agent.py already saves viewer.steel.dev URL
+  const viewerUrl = url
 
   currentLiveUrl = viewerUrl
 
