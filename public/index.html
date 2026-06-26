@@ -454,7 +454,7 @@ function selectTask(task) {
   document.getElementById('live-niche').textContent = [task.config?.niche?.toUpperCase(), task.config?.city?.toUpperCase()].filter(Boolean).join(' · ')
   document.getElementById('live-box').classList.toggle('captcha', task.status==='paused_captcha')
   document.getElementById('captcha-bar').classList.toggle('show', task.status==='paused_captcha')
-  if (task.liveUrl && task.liveUrl.startsWith('http')) { showLiveIframe(task.liveUrl, task.status, task.needsLogin) } else if (screenshots[task.taskId]) showScreenshot(screenshots[task.taskId])
+  if (task.liveUrl || task.latestScreenshot) { showLiveIframe(task.liveUrl || '', task.status, task.needsInteraction) } else if (screenshots[task.taskId]) showScreenshot(screenshots[task.taskId])
   if (task.status==='running'||task.status==='paused_captcha') connectWS(task.taskId)
 }
 
