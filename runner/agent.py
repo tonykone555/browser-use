@@ -287,6 +287,26 @@ async def main():
             except Exception:
                 pass
 
+        # Auto-save session cookies after task completes
+        if task_type == "airbnb_outreach":
+            try:
+                import requests as req
+                r = req.get(
+                    f"https://api.steel.dev/v1/sessions/{session.id}/cookies",
+                    headers={"Steel-Api-Key": os.environ.get("STEEL_API_KEY", "")},
+                    timeout=5
+                )
+                cookies = r.json().get("cookies", [])
+                if cookies:
+                    db.collection("assix_sessions").document("airbnb").set({
+                        "cookies": cookies,
+                        "savedAt": datetime.now().isoformat(),
+                    })
+                    print(f"✓ Airbnb session auto-saved: {len(cookies)} cookies")
+                    log(task_id, f"✓ Airbnb session saved for next run", "success")
+            except Exception as e:
+                print(f"Auto-save session error: {e}")
+
         log(task_id, f"Done. Success: {success}", "success" if success else "warning")
         if final_result:
             log(task_id, f"Result preview: {final_result[:200]}")
