@@ -1,5 +1,2 @@
-browser-use==0.1.40
-steel-sdk
+skyvern
 firebase-admin
-langchain-cerebras
-playwright
