@@ -412,6 +412,33 @@ app.post('/api/leads/push-close-batch', async (req, res) => {
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
+
+// Save browser session cookies from Steel
+app.post('/api/sessions/save', async (req, res) => {
+  try {
+    const { platform, steelSessionId } = req.body;
+    if (!steelSessionId) return res.status(400).json({ error: 'No Steel session ID' });
+    
+    // Fetch cookies from Steel session
+    const r = await axios.get(
+      `https://api.steel.dev/v1/sessions/${steelSessionId}/cookies`,
+      { headers: { 'Steel-Api-Key': process.env.STEEL_API_KEY || '' } }
+    );
+    const cookies = r.data?.cookies || [];
+    
+    await db.collection('assix_sessions').doc(platform).set({
+      cookies,
+      savedAt: new Date().toISOString(),
+      steelSessionId,
+    });
+    
+    console.log(`Session saved for ${platform}: ${cookies.length} cookies`);
+    res.json({ success: true, cookieCount: cookies.length });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.get('/api/sessions/all', async (req, res) => {
   try {
     const s = await db.collection('assix_sessions').get();
