@@ -133,13 +133,14 @@ Get {max_leads} results. Output as JSON array: [{{"name":"...","phone":"...","we
             login_instructions = f"""
 LOGIN INSTRUCTIONS (do this first if not already logged in):
 1. Go to https://www.airbnb.com/login
-2. Click "Continue with email"
-3. Type email: {email}
-4. Click Next
+2. Type email: {email}
+3. Click Next or Continue
+4. Look for "Continue with password" or "Use password" option and click it
 5. Type password: {password}
-6. Click Log in
-7. If any popup appears (promotions, notifications, cookies) - click Dismiss, No thanks, or X to close it
-8. Once logged in go to https://www.airbnb.com/s/{quote(city)}/homes
+6. Click Log in or Submit
+7. If a verification code is sent to email - wait 60 seconds for user to enter it manually via live view
+8. If any popup appears (promotions, notifications, cookies) - click X, Dismiss or No thanks
+9. Once logged in go to https://www.airbnb.com/s/{quote(city)}/homes
 """
         else:
             login_instructions = "If you see a login page, wait 120 seconds for the user to login manually then continue."
