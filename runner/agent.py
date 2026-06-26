@@ -147,7 +147,9 @@ LOGIN INSTRUCTIONS (do this first if not already logged in):
         else:
             login_instructions = "If you see a login page, wait 120 seconds for the user to login manually then continue."
 
-        return f"""Go to https://www.airbnb.com/s/{quote(city)}/homes
+        return f"""IMPORTANT: Your starting URL is https://www.airbnb.com/s/{quote(city)}/homes — navigate there immediately if you are on a blank page.
+
+Go to https://www.airbnb.com/s/{quote(city)}/homes
 
 {login_instructions}
 
@@ -213,7 +215,7 @@ async def main():
 
     # Start Steel session
     steel_client = Steel(steel_api_key=os.environ.get("STEEL_API_KEY", ""))
-    session = steel_client.sessions.create()
+    session = steel_client.sessions.create(timeout=1800000)  # 30 minutes in ms
     # Use app.steel.dev sessions viewer
     live_url = getattr(session, "session_viewer_url", "") or f"https://app.steel.dev/sessions/{session.id}"
 
@@ -254,6 +256,7 @@ async def main():
         browser=browser,
         use_vision=False,
         max_input_tokens=40000,
+        max_failures=5,
     )
 
     # Load saved session cookies if available
