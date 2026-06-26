@@ -228,6 +228,25 @@ select,input[type=text],input[type=number],input[type=password],textarea{width:1
               <div style="font-size:11px;color:#52525B;margin-bottom:12px">Saved platform logins</div>
               <button class="btn-outline" onclick="viewSessions()">VIEW SESSIONS</button>
             </div>
+            <div class="settings-card">
+              <div class="lbl" style="margin-bottom:8px">SAVED CREDENTIALS</div>
+              <div style="font-size:10px;color:#52525B;margin-bottom:12px">Store login credentials for Skyvern to auto-login on your behalf</div>
+              <div id="credentials-list" style="margin-bottom:12px"></div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <select id="cred-platform" style="background:#111;color:#F5F5F5;border:1px solid #2A2A2A;padding:8px;border-radius:4px;font-size:10px;font-family:inherit;letter-spacing:.05em">
+                  <option value="airbnb">AIRBNB</option>
+                  <option value="leboncoin">LEBONCOIN</option>
+                  <option value="instagram">INSTAGRAM</option>
+                  <option value="facebook">FACEBOOK</option>
+                  <option value="linkedin">LINKEDIN</option>
+                  <option value="twitter">TWITTER / X</option>
+                </select>
+                <input id="cred-username" type="email" placeholder="Email / Username" style="background:#111;color:#F5F5F5;border:1px solid #2A2A2A;padding:8px;border-radius:4px;font-size:10px;font-family:inherit"/>
+                <input id="cred-password" type="password" placeholder="Password" style="background:#111;color:#F5F5F5;border:1px solid #2A2A2A;padding:8px;border-radius:4px;font-size:10px;font-family:inherit"/>
+                <button class="btn-sm" onclick="saveCredential()">SAVE CREDENTIALS</button>
+              </div>
+              <div style="font-size:8px;color:#3F3F46;margin-top:8px">Stored securely in Skyvern vault. Never sent to AI models.</div>
+            </div>
           </div>
         </div>
         <div id="pill">
