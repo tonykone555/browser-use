@@ -58,10 +58,10 @@ input,select,textarea{font-family:'Space Grotesk',sans-serif;outline:none}
 .tab-panel{display:none;flex:1;flex-direction:column;overflow:hidden}
 .tab-panel.active{display:flex}
 .tab-scroll{flex:1;overflow-y:auto;padding:14px 20px 70px}
-#live-box{flex:1;margin:14px 20px 0;border:1px solid #6366F1;border-radius:4px;overflow:auto;position:relative;background:#0F0F0F;min-height:0;transition:border-color .3s}
+#live-box{flex:1;margin:14px 20px 0;border:1px solid #6366F1;border-radius:4px;overflow:hidden;position:relative;background:#0F0F0F;min-height:200px;transition:border-color .3s}
 #live-box.captcha{border-color:#F59E0B}
 #live-img{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:none;z-index:2}
-#live-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;color:#52525B;letter-spacing:.1em;text-align:center}
+#live-empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:9px;color:#52525B;letter-spacing:.1em;text-align:center;flex-direction:column;gap:8px;z-index:1}
 #live-footer{position:absolute;bottom:0;left:0;right:0;padding:6px 10px;background:#0A0A0A;border-top:1px solid #1A1A1A;display:flex;align-items:center;gap:14px;z-index:3;font-size:9px;color:#52525B;letter-spacing:.08em}
 #log-box{height:120px;margin:10px 20px 60px;border:1px solid #1A1A1A;border-radius:4px;display:flex;flex-direction:column;overflow:hidden;flex-shrink:0}
 #log-inner{flex:1;overflow-y:auto;padding:8px 10px;font-family:'JetBrains Mono',monospace}
@@ -485,11 +485,13 @@ async function startScreenshotPolling(taskId) {
     try {
       const res = await fetch(CONFIG.serverUrl+'/api/task/'+tid+'/screenshot')
       const data = await res.json()
-      if (data && data.screenshot) {
+      if (data && data.screenshot && data.screenshot.length > 500) {
         const img = document.getElementById('live-img')
+        const empty = document.getElementById('live-empty')
         img.src = 'data:image/jpeg;base64,' + data.screenshot
         img.style.display = 'block'
-        document.getElementById('live-empty').style.display = 'none'
+        img.style.zIndex = '10'
+        if (empty) empty.style.display = 'none'
       }
       const logRes = await fetch(CONFIG.serverUrl+'/api/task/'+tid+'/logs/live')
       const logData = await logRes.json()
@@ -796,6 +798,29 @@ async function sendMsg() {
     renderChat()
   }
 }
+
+// Load console messages from Firebase for active task
+async function loadConsoleMessages() {
+  if (!activeTask) return
+  try {
+    const res = await fetch(CONFIG.serverUrl+'/api/task/'+activeTask.taskId+'/status')
+    const data = await res.json()
+    if (data.messages && data.messages.length > 0) {
+      const newMsgs = data.messages.filter(m => m.role === 'agent')
+      if (newMsgs.length > 0) {
+        // Add any new agent messages not already in chat
+        newMsgs.forEach(m => {
+          const exists = chat.find(c => c.msg === m.msg)
+          if (!exists) chat.push({role:'agent', msg: m.msg})
+        })
+        renderChat()
+      }
+    }
+  } catch(e) {}
+}
+
+// Poll console messages every 5 seconds
+setInterval(loadConsoleMessages, 5000)
 
 function handleFiles(input) {
   attachments = [...attachments, ...Array.from(input.files)]
