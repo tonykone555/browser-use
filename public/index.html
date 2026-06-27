@@ -483,16 +483,16 @@ function showLiveIframe(url, status, needsLogin) {
   const iframe = document.getElementById('live-iframe')
   const img = document.getElementById('live-img')
   const empty = document.getElementById('live-empty')
-
-  // Always hide iframe — use screenshots + buttons instead
-  if (iframe) { iframe.style.display = 'none'; iframe.src = '' }
+  const takeControlBtn = document.getElementById('take-control-btn')
 
   currentLiveUrl = url || ''
 
   if (!url || !url.startsWith('http')) {
+    if (iframe) { iframe.style.display = 'none'; iframe.src = '' }
     if (img) img.style.display = 'none'
     empty.style.display = 'flex'
     empty.innerHTML = 'START A TASK TO SEE LIVE VIEW'
+    if (takeControlBtn) takeControlBtn.style.display = 'none'
     removeLiveOverlays()
     return
   }
@@ -500,35 +500,46 @@ function showLiveIframe(url, status, needsLogin) {
   const isComplete = status === 'complete'
   const isError = status === 'error'
   const accentColor = isComplete ? '#22c55e' : isError ? '#ef4444' : '#6366F1'
-  const statusLabel = isComplete ? 'COMPLETE' : isError ? 'ERROR' : 'LIVE'
 
-  // Show screenshot if available
-  const screenshot = activeTask && activeTask.latestScreenshot
-  if (screenshot && img) {
-    img.src = 'data:image/png;base64,' + screenshot
-    img.style.display = 'block'
-    empty.style.display = 'none'
-  } else {
-    if (img) img.style.display = 'none'
-    empty.style.display = 'flex'
-    empty.style.flexDirection = 'column'
-    empty.style.alignItems = 'center'
-    empty.style.gap = '8px'
-    empty.innerHTML = `<span style="font-size:9px;color:#52525B;letter-spacing:.1em">${statusLabel}</span><span style="font-size:9px;color:#3F3F46">Loading browser...</span>`
+  // Show iframe with Steel session
+  if (iframe) {
+    if (iframe.src !== url) iframe.src = url
+    iframe.style.display = 'block'
   }
+  if (img) img.style.display = 'none'
+  empty.style.display = 'none'
 
-  // Show the existing TAKE CONTROL button
-  const takeControlBtn = document.getElementById('take-control-btn')
+  // Show WATCH LIVE button
   if (takeControlBtn) {
     takeControlBtn.style.display = 'flex'
     takeControlBtn.textContent = 'WATCH LIVE'
     takeControlBtn.style.background = accentColor
     takeControlBtn.onclick = () => window.open(url, '_blank')
   }
+
+  // Add LOGIN FULL SCREEN helper at bottom
+  removeLiveOverlays()
+  const helper = document.createElement('div')
+  helper.id = 'login-helper'
+  helper.style.cssText = 'position:absolute;bottom:40px;left:0;right:0;z-index:10;background:rgba(0,0,0,0.85);padding:6px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px'
+  helper.innerHTML = `
+    <span style="font-size:8px;color:#71717A;letter-spacing:.05em">Tap to open full screen</span>
+    <button onclick="window.open('${url}','_blank')" style="background:#6366F1;color:#fff;border:none;padding:4px 10px;border-radius:4px;font-size:8px;font-weight:600;cursor:pointer;white-space:nowrap;letter-spacing:.05em">FULL SCREEN</button>
+  `
+  const liveBox = document.getElementById('live-box')
+  if (liveBox) liveBox.appendChild(helper)
+
+  // Screenshot overlay on top of iframe if available
+  const screenshot = activeTask && activeTask.latestScreenshot
+  if (screenshot && img) {
+    img.src = 'data:image/png;base64,' + screenshot
+    img.style.cssText = 'position:absolute;top:28px;left:0;width:100%;height:calc(100% - 28px);object-fit:cover;display:block;z-index:1'
+    if (iframe) iframe.style.zIndex = '0'
+  }
 }
 
 function removeLiveOverlays() {
-  ['watch-live-btn','take-control-overlay','interaction-banner','fs-overlay-btn','login-helper'].forEach(id => {
+  ['login-helper','fs-overlay-btn','interaction-banner','watch-live-btn','take-control-overlay'].forEach(id => {
     const el = document.getElementById(id)
     if (el) el.remove()
   })
