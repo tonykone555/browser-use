@@ -179,18 +179,14 @@ Dismiss any popups. Never book or pay anything."""
         url = config.get("url", "https://www.google.com")
         return url, goal
 
-def take_screenshot(run_id: str) -> str:
-    """Take screenshot via Skyvern API and return base64"""
+def fetch_screenshot_b64(url: str) -> str:
+    """Fetch a screenshot URL and return base64"""
     try:
-        r = requests.get(
-            f"https://api.skyvern.com/api/v1/runs/{run_id}/screenshot",
-            headers={"x-api-key": SKYVERN_API_KEY},
-            timeout=10
-        )
+        r = requests.get(url, timeout=10)
         if r.status_code == 200:
             return base64.b64encode(r.content).decode("utf-8")
     except Exception as e:
-        print(f"Screenshot error: {e}")
+        print(f"Screenshot fetch error: {e}")
     return ""
 
 async def main():
@@ -277,6 +273,22 @@ async def main():
             try:
                 status_run = await client.get_run(run_id=run_id)
                 status = str(getattr(status_run, 'status', '') or '')
+
+                # Grab latest screenshot from run response
+                try:
+                    screenshot_urls = getattr(status_run, 'screenshot_urls', None) or []
+                    if screenshot_urls and elapsed - last_screenshot >= screenshot_interval:
+                        latest_url = screenshot_urls[0] if isinstance(screenshot_urls[0], str) else screenshot_urls[0].get('url', '')
+                        if latest_url:
+                            img_b64 = fetch_screenshot_b64(latest_url)
+                            if img_b64:
+                                db.collection("assix_tasks").document(task_id).update({
+                                    "latestScreenshot": img_b64,
+                                    "screenshotAt": int(datetime.now().timestamp() * 1000),
+                                })
+                                last_screenshot = elapsed
+                except Exception as se:
+                    print(f"Screenshot error: {se}")
 
                 if elapsed % 60 == 0:
                     log(task_id, f"Status: {status} ({elapsed}s)")
