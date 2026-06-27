@@ -208,14 +208,16 @@ select,input[type=text],input[type=number],input[type=password],textarea{width:1
               <div style="flex:1;background:#2A2A2A;border-radius:4px;padding:3px 8px;font-size:9px;color:#8E8E93;text-align:center;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" id="live-url">about:blank</div>
               <div style="flex-shrink:0;font-size:9px;color:#52525B" id="live-task-name">NO TASK</div>
             </div>
-            <!-- Steel login banner -->
-<div id="steel-login-banner" style="display:none;position:absolute;top:28px;left:0;right:0;z-index:10;background:#6366F1;padding:8px 14px;display:flex;align-items:center;justify-content:space-between;gap:8px">
-  <span style="font-size:9px;color:white;letter-spacing:.06em">Login to Steel first to see live browser</span>
-  <button onclick="window.open('https://app.steel.dev','_blank')" style="background:white;color:#6366F1;border:none;padding:4px 12px;border-radius:4px;font-size:9px;font-weight:700;cursor:pointer">LOGIN TO STEEL →</button>
+            <!-- Steel session button - always visible, updates with session URL -->
+<div id="steel-session-bar" style="position:absolute;top:28px;left:0;right:0;z-index:10;background:#141414;border-bottom:1px solid #2A2A2A;padding:6px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px">
+  <span style="font-size:9px;color:#52525B;letter-spacing:.06em" id="steel-session-label">NO ACTIVE SESSION</span>
+  <button id="steel-session-btn" onclick="openSteelSession()" style="background:#2A2A2A;color:#52525B;border:none;padding:4px 12px;border-radius:4px;font-size:9px;font-weight:700;cursor:pointer;transition:all .2s">OPEN SESSION →</button>
 </div>
-<img id="live-img" alt="live view" style="margin-top:28px;display:none"/>
-            <iframe id="live-iframe" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;display:none" allow="camera;microphone;fullscreen" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock" scrolling="yes"></iframe>
-            <div id="live-empty" style="margin-top:28px">START A TASK TO SEE LIVE VIEW</div>
+            <img id="live-img" alt="live view" style="position:absolute;top:56px;left:0;width:100%;height:calc(100% - 84px);object-fit:contain;display:none"/>
+            <div id="live-empty" style="margin-top:28px;position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:8px;font-size:9px;color:#52525B;letter-spacing:.1em;text-align:center">
+              <div>START A TASK TO SEE LIVE SCREENSHOTS</div>
+              <div style="font-size:8px;color:#3F3F46">Updates every 5 seconds from Steel</div>
+            </div>
             <div id="live-footer">
               <span id="live-status">● IDLE</span>
               <span id="live-prog">0/0</span>
@@ -393,18 +395,41 @@ function openSteelSession() {
 
 function updateSteelButton(task) {
   const btn = document.getElementById('steel-btn')
+  const sessionBtn = document.getElementById('steel-session-btn')
+  const sessionLabel = document.getElementById('steel-session-label')
   const liveUrl = task?.liveUrl || ''
 
   if (liveUrl && liveUrl.startsWith('http')) {
     currentSteelUrl = liveUrl
+
+    // Update header button
     btn.classList.add('active')
-    btn.title = `Open Steel session`
     btn.innerHTML = '⚡ OPEN IN STEEL →'
+
+    // Update session bar
+    const sessionId = liveUrl.split('/').pop()
+    if (sessionLabel) sessionLabel.textContent = `SESSION: ${sessionId?.slice(0,8)}...`
+    if (sessionBtn) {
+      sessionBtn.style.background = '#6366F1'
+      sessionBtn.style.color = 'white'
+      sessionBtn.textContent = 'OPEN SESSION →'
+      sessionBtn.onclick = () => window.open(liveUrl, '_blank')
+    }
   } else {
     currentSteelUrl = null
+
+    // Reset header button
     btn.classList.remove('active')
-    btn.title = 'Waiting for Steel session...'
     btn.innerHTML = '⚡ WAITING...'
+
+    // Reset session bar
+    if (sessionLabel) sessionLabel.textContent = 'NO ACTIVE SESSION'
+    if (sessionBtn) {
+      sessionBtn.style.background = '#2A2A2A'
+      sessionBtn.style.color = '#52525B'
+      sessionBtn.textContent = 'OPEN SESSION →'
+      sessionBtn.onclick = () => alert('No active session yet. Start a task first.')
+    }
   }
 }
 
@@ -461,24 +486,10 @@ async function startScreenshotPolling(taskId) {
       const res = await fetch(CONFIG.serverUrl+'/api/task/'+tid+'/screenshot')
       const data = await res.json()
       if (data && data.screenshot) {
-        try {
-          const byteChars = atob(data.screenshot)
-          const byteArr = new Uint8Array(byteChars.length)
-          for (let i = 0; i < byteChars.length; i++) byteArr[i] = byteChars.charCodeAt(i)
-          const blob = new Blob([byteArr], {type:'image/jpeg'})
-          const blobUrl = URL.createObjectURL(blob)
-          const img = document.getElementById('live-img')
-          if (img._blobUrl) URL.revokeObjectURL(img._blobUrl)
-          img._blobUrl = blobUrl
-          img.src = blobUrl
-          img.style.display = 'block'
-          document.getElementById('live-empty').style.display = 'none'
-        } catch(e) {
-          const img = document.getElementById('live-img')
-          img.src = 'data:image/jpeg;base64,'+data.screenshot
-          img.style.display = 'block'
-          document.getElementById('live-empty').style.display = 'none'
-        }
+        const img = document.getElementById('live-img')
+        img.src = 'data:image/jpeg;base64,' + data.screenshot
+        img.style.display = 'block'
+        document.getElementById('live-empty').style.display = 'none'
       }
       const logRes = await fetch(CONFIG.serverUrl+'/api/task/'+tid+'/logs/live')
       const logData = await logRes.json()
@@ -557,53 +568,21 @@ function selectTask(task) {
 let currentLiveUrl = ''
 
 function showLiveIframe(url, status, needsLogin) {
-  const iframe = document.getElementById('live-iframe')
-  const img = document.getElementById('live-img')
+  // Iframe removed - using screenshots only
+  // Steel session accessible via ⚡ button
   const empty = document.getElementById('live-empty')
-
-  if (img) img.style.display = 'none'
-
-  if (!url || !url.startsWith('http')) {
-    if (iframe) { iframe.style.display = 'none'; iframe.src = '' }
-    empty.style.display = 'flex'
-    empty.innerHTML = 'START A TASK TO SEE LIVE VIEW'
-    return
-  }
-
-  currentLiveUrl = url
-
-  if (iframe) {
-    if (iframe.src !== url) iframe.src = url
-    iframe.style.display = 'block'
+  if (url) {
     empty.style.display = 'none'
-
-    // Remove old overlay buttons
-    document.getElementById('fs-overlay-btn')?.remove()
-    document.getElementById('login-helper')?.remove()
-
-    // Detect if iframe shows login page
-    iframe.onload = () => {
-      try {
-        const iframeUrl = iframe.contentWindow?.location?.href || ''
-        const banner = document.getElementById('steel-login-banner')
-        if (iframeUrl.includes('login') || iframeUrl.includes('signin') || iframeUrl === 'about:blank') {
-          if (banner) banner.style.display = 'flex'
-        } else {
-          if (banner) banner.style.display = 'none'
-        }
-      } catch(e) {
-        // Cross-origin — show banner as precaution
-        const banner = document.getElementById('steel-login-banner')
-        if (banner) banner.style.display = 'flex'
-      }
-    }
   }
 }
 
 function showScreenshot(src) {
   const img = document.getElementById('live-img')
-  img.src = src; img.style.display = 'block'
-  document.getElementById('live-empty').style.display = 'none'
+  const empty = document.getElementById('live-empty')
+  if (!src) return
+  img.src = src
+  img.style.display = 'block'
+  empty.style.display = 'none'
 }
 
 function connectWS(taskId) {
