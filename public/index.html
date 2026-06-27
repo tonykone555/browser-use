@@ -491,10 +491,8 @@ function showLiveIframe(url, status, needsLogin) {
     return
   }
 
-  // Convert app.steel.dev URL to viewer URL
-  const viewerUrl = url.includes('app.steel.dev/sessions/')
-    ? url.replace('app.steel.dev/sessions/', 'viewer.steel.dev/?session=')
-    : url
+  // Use URL directly — app.steel.dev/sessions/ID shows the live browser
+  const viewerUrl = url
 
   currentLiveUrl = viewerUrl
 
@@ -510,15 +508,27 @@ function showLiveIframe(url, status, needsLogin) {
     iframe.style.display = 'block'
     empty.style.display = 'none'
 
-    // Add FULL SCREEN overlay button
+    // Add FULL SCREEN button top right
     const existingBtn = document.getElementById('fs-overlay-btn')
     if (existingBtn) existingBtn.remove()
     const fsBtn = document.createElement('button')
     fsBtn.id = 'fs-overlay-btn'
     fsBtn.textContent = 'FULL SCREEN'
-    fsBtn.style.cssText = `position:absolute;bottom:48px;right:8px;z-index:10;background:rgba(0,0,0,0.8);color:#fff;border:1px solid #3F3F46;padding:5px 10px;border-radius:4px;font-size:8px;font-weight:600;cursor:pointer;letter-spacing:.06em`
+    fsBtn.style.cssText = `position:absolute;top:36px;right:8px;z-index:10;background:rgba(99,102,241,0.9);color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer`
     fsBtn.onclick = () => window.open(viewerUrl, '_blank')
     iframe.parentElement.appendChild(fsBtn)
+
+    // Add LOGIN FULL SCREEN banner at bottom
+    const existingHelper = document.getElementById('login-helper')
+    if (existingHelper) existingHelper.remove()
+    const helper = document.createElement('div')
+    helper.id = 'login-helper'
+    helper.style.cssText = `position:absolute;bottom:40px;left:0;right:0;z-index:10;background:rgba(0,0,0,0.85);padding:6px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px`
+    helper.innerHTML = `
+      <span style="font-size:8px;color:#71717A;letter-spacing:.05em">If login screen — sign in via full screen first</span>
+      <button onclick="window.open('${viewerUrl}','_blank')" style="background:#6366F1;color:#fff;border:none;padding:4px 10px;border-radius:4px;font-size:8px;font-weight:600;cursor:pointer;white-space:nowrap">LOGIN FULL SCREEN</button>
+    `
+    iframe.parentElement.appendChild(helper)
   }
 }
 
