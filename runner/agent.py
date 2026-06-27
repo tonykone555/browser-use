@@ -228,9 +228,9 @@ async def main():
             "wait_for_completion": False,
         }
 
-        # Add credential if available
+        # Credential ID is passed via prompt context — Skyvern uses it automatically
         if credential_id:
-            run_kwargs["credential_id"] = credential_id
+            run_kwargs["prompt"] = f"Use credential ID: {credential_id}\n\n" + run_kwargs["prompt"]
             log(task_id, f"✓ Using saved credentials", "success")
 
         log(task_id, "Starting Skyvern task...")
