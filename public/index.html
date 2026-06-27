@@ -484,63 +484,67 @@ function showLiveIframe(url, status, needsLogin) {
   const img = document.getElementById('live-img')
   const empty = document.getElementById('live-empty')
 
-  if (img) img.style.display = 'none'
+  // Always hide iframe — use screenshots + buttons instead
+  if (iframe) { iframe.style.display = 'none'; iframe.src = '' }
+
+  currentLiveUrl = url || ''
 
   if (!url || !url.startsWith('http')) {
-    if (iframe) { iframe.style.display = 'none'; iframe.src = '' }
+    if (img) img.style.display = 'none'
     empty.style.display = 'flex'
     empty.innerHTML = 'START A TASK TO SEE LIVE VIEW'
+    removeLiveOverlays()
     return
   }
-
-  // Use URL as-is — agent.py already saves viewer.steel.dev URL
-  const viewerUrl = url
-
-  currentLiveUrl = viewerUrl
 
   const isComplete = status === 'complete'
   const isError = status === 'error'
   const accentColor = isComplete ? '#22c55e' : isError ? '#ef4444' : '#6366F1'
+  const statusLabel = isComplete ? 'COMPLETE' : isError ? 'ERROR' : 'LIVE'
 
-  // Always load iframe directly — Steel login happens inside iframe
-  if (iframe) {
-    if (iframe.src !== viewerUrl) {
-      iframe.src = viewerUrl
-    }
-    iframe.style.display = 'block'
+  // Show screenshot if available
+  const screenshot = activeTask && activeTask.latestScreenshot
+  if (screenshot && img) {
+    img.src = 'data:image/png;base64,' + screenshot
+    img.style.display = 'block'
     empty.style.display = 'none'
-
-    // Add FULL SCREEN button and login helper
-    const existingBtn = document.getElementById('fs-overlay-btn')
-    if (existingBtn) existingBtn.remove()
-    const existingHelper = document.getElementById('login-helper')
-    if (existingHelper) existingHelper.remove()
-
-    const fsBtn = document.createElement('button')
-    fsBtn.id = 'fs-overlay-btn'
-    fsBtn.textContent = 'FULL SCREEN'
-    fsBtn.style.cssText = `position:absolute;bottom:48px;right:8px;z-index:10;background:rgba(0,0,0,0.8);color:#fff;border:1px solid #3F3F46;padding:5px 10px;border-radius:4px;font-size:8px;font-weight:600;cursor:pointer;letter-spacing:.06em`
-    fsBtn.onclick = () => window.open(viewerUrl, '_blank')
-    iframe.parentElement.appendChild(fsBtn)
-
-    // Login helper banner at bottom of iframe
-    const helper = document.createElement('div')
-    helper.id = 'login-helper'
-    helper.style.cssText = `position:absolute;bottom:40px;left:0;right:0;z-index:10;background:rgba(0,0,0,0.85);padding:6px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px`
-    helper.innerHTML = `
-      <span style="font-size:8px;color:#71717A;letter-spacing:.05em">If login screen shows — sign in via full screen first</span>
-      <button onclick="window.open('${viewerUrl}','_blank')" style="background:#6366F1;color:#fff;border:none;padding:4px 10px;border-radius:4px;font-size:8px;font-weight:600;cursor:pointer;white-space:nowrap;letter-spacing:.05em">LOGIN FULL SCREEN</button>
-    `
-    iframe.parentElement.appendChild(helper)
-
-    // Hide helper after iframe loads successfully
-    iframe.onload = () => {
-      setTimeout(() => {
-        const h = document.getElementById('login-helper')
-        if (h) h.style.opacity = '0.3'
-      }, 3000)
-    }
+  } else {
+    if (img) img.style.display = 'none'
+    empty.style.display = 'flex'
+    empty.style.flexDirection = 'column'
+    empty.style.alignItems = 'center'
+    empty.style.gap = '8px'
+    empty.innerHTML = `<span style="font-size:9px;color:#52525B;letter-spacing:.1em">${statusLabel}</span><span style="font-size:9px;color:#3F3F46">Loading browser...</span>`
   }
+
+  // Remove old overlays
+  removeLiveOverlays()
+
+  // Add WATCH LIVE button overlay
+  const liveBtn = document.createElement('button')
+  liveBtn.id = 'watch-live-btn'
+  liveBtn.textContent = 'WATCH LIVE'
+  liveBtn.style.cssText = `position:absolute;bottom:48px;left:8px;z-index:10;background:${accentColor};color:#fff;border:none;padding:5px 10px;border-radius:4px;font-size:8px;font-weight:700;cursor:pointer;letter-spacing:.06em`
+  liveBtn.onclick = () => window.open(url, '_blank')
+  document.getElementById('live-box').appendChild(liveBtn)
+
+  // Add TAKE CONTROL button overlay
+  const ctrlBtn = document.createElement('button')
+  ctrlBtn.id = 'take-control-overlay'
+  ctrlBtn.textContent = 'TAKE CONTROL'
+  ctrlBtn.style.cssText = `position:absolute;bottom:48px;right:8px;z-index:10;background:rgba(0,0,0,0.8);color:#fff;border:1px solid #3F3F46;padding:5px 10px;border-radius:4px;font-size:8px;font-weight:600;cursor:pointer;letter-spacing:.06em`
+  ctrlBtn.onclick = () => {
+    const w = window.open(url, 'steel-control', 'width=900,height=700,scrollbars=yes')
+    if (!w) window.open(url, '_blank')
+  }
+  document.getElementById('live-box').appendChild(ctrlBtn)
+}
+
+function removeLiveOverlays() {
+  ['watch-live-btn','take-control-overlay','interaction-banner','fs-overlay-btn','login-helper'].forEach(id => {
+    const el = document.getElementById(id)
+    if (el) el.remove()
+  })
 }
 
 function showScreenshot(src) {
