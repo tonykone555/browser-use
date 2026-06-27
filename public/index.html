@@ -128,7 +128,7 @@ select,input[type=text],input[type=number],input[type=password],textarea{width:1
       <span class="brand">ASSIX<span>.</span></span>
       <span class="nav-link" onclick="setTab('tasks')">Tasks</span>
       <span class="nav-link" onclick="setTab('history')">History</span>
-      <span class="nav-link" onclick="setTab('settings'); loadCredentials()">Settings</span>
+      <span class="nav-link" onclick="setTab('settings')">Settings</span>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
       <div id="status-pill" class="status-pill" style="border:1px solid #F59E0B;color:#F59E0B">SERVER OFFLINE</div>
@@ -228,25 +228,6 @@ select,input[type=text],input[type=number],input[type=password],textarea{width:1
               <div style="font-size:11px;color:#52525B;margin-bottom:12px">Saved platform logins</div>
               <button class="btn-outline" onclick="viewSessions()">VIEW SESSIONS</button>
             </div>
-            <div class="settings-card">
-              <div class="lbl" style="margin-bottom:8px">SAVED CREDENTIALS</div>
-              <div style="font-size:10px;color:#52525B;margin-bottom:12px">Store login credentials for Skyvern to auto-login on your behalf</div>
-              <div id="credentials-list" style="margin-bottom:12px"></div>
-              <div style="display:flex;flex-direction:column;gap:8px">
-                <select id="cred-platform" style="background:#111;color:#F5F5F5;border:1px solid #2A2A2A;padding:8px;border-radius:4px;font-size:10px;font-family:inherit;letter-spacing:.05em">
-                  <option value="airbnb">AIRBNB</option>
-                  <option value="leboncoin">LEBONCOIN</option>
-                  <option value="instagram">INSTAGRAM</option>
-                  <option value="facebook">FACEBOOK</option>
-                  <option value="linkedin">LINKEDIN</option>
-                  <option value="twitter">TWITTER / X</option>
-                </select>
-                <input id="cred-username" type="email" placeholder="Email / Username" style="background:#111;color:#F5F5F5;border:1px solid #2A2A2A;padding:8px;border-radius:4px;font-size:10px;font-family:inherit"/>
-                <input id="cred-password" type="password" placeholder="Password" style="background:#111;color:#F5F5F5;border:1px solid #2A2A2A;padding:8px;border-radius:4px;font-size:10px;font-family:inherit"/>
-                <button class="btn-sm" onclick="saveCredential()">SAVE CREDENTIALS</button>
-              </div>
-              <div style="font-size:8px;color:#3F3F46;margin-top:8px">Stored securely in Skyvern vault. Never sent to AI models.</div>
-            </div>
           </div>
         </div>
         <div id="pill">
@@ -275,7 +256,6 @@ select,input[type=text],input[type=number],input[type=password],textarea{width:1
       <select id="task-type-select" onchange="renderTaskFields()">
         <option value="google_maps_scrape">Google Maps Scrape</option>
         <option value="pages_jaunes_scrape">Pages Jaunes Scrape</option>
-        <option value="airbnb_outreach">Airbnb Outreach</option>
         <option value="instagram_dm">Instagram DM Campaign</option>
         <option value="whatsapp_outreach">WhatsApp Outreach</option>
         <option value="market_research">Market Research</option>
@@ -314,7 +294,6 @@ const CONFIG = {
   quickTasks: [
     {id:'google_maps_scrape',label:'Google Maps Scrape'},
     {id:'pages_jaunes_scrape',label:'Pages Jaunes Scrape'},
-    {id:'airbnb_outreach',label:'Airbnb Outreach'},
     {id:'instagram_dm',label:'Instagram DM'},
     {id:'whatsapp_outreach',label:'WhatsApp Outreach'},
     {id:'market_research',label:'Market Research'},
@@ -473,7 +452,7 @@ function selectTask(task) {
   document.getElementById('live-niche').textContent = [task.config?.niche?.toUpperCase(), task.config?.city?.toUpperCase()].filter(Boolean).join(' · ')
   document.getElementById('live-box').classList.toggle('captcha', task.status==='paused_captcha')
   document.getElementById('captcha-bar').classList.toggle('show', task.status==='paused_captcha')
-  if (task.liveUrl || task.latestScreenshot) { showLiveIframe(task.liveUrl || '', task.status, task.needsInteraction) } else if (screenshots[task.taskId]) showScreenshot(screenshots[task.taskId])
+  if (task.liveUrl && task.liveUrl.startsWith('http')) { showLiveIframe(task.liveUrl, task.status, task.needsLogin) } else if (screenshots[task.taskId]) showScreenshot(screenshots[task.taskId])
   if (task.status==='running'||task.status==='paused_captcha') connectWS(task.taskId)
 }
 
@@ -483,72 +462,61 @@ function showLiveIframe(url, status, needsLogin) {
   const iframe = document.getElementById('live-iframe')
   const img = document.getElementById('live-img')
   const empty = document.getElementById('live-empty')
-  const takeControlBtn = document.getElementById('take-control-btn')
 
-  currentLiveUrl = url || ''
+  if (img) img.style.display = 'none'
 
   if (!url || !url.startsWith('http')) {
     if (iframe) { iframe.style.display = 'none'; iframe.src = '' }
-    if (img) img.style.display = 'none'
     empty.style.display = 'flex'
     empty.innerHTML = 'START A TASK TO SEE LIVE VIEW'
-    if (takeControlBtn) takeControlBtn.style.display = 'none'
-    removeLiveOverlays()
     return
   }
+
+  // Convert app.steel.dev URL to viewer URL
+  const viewerUrl = url.includes('app.steel.dev/sessions/')
+    ? url.replace('app.steel.dev/sessions/', 'viewer.steel.dev/?session=')
+    : url
+
+  currentLiveUrl = viewerUrl
 
   const isComplete = status === 'complete'
   const isError = status === 'error'
   const accentColor = isComplete ? '#22c55e' : isError ? '#ef4444' : '#6366F1'
 
-  // Hide iframe — show screenshots instead
-  if (iframe) { iframe.style.display = 'none'; iframe.src = '' }
-
-  // Show screenshot if available, else show placeholder
-  const screenshot = activeTask && activeTask.latestScreenshot
-  if (screenshot && img) {
-    img.src = 'data:image/png;base64,' + screenshot
-    img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;margin-top:28px'
+  // Always load iframe directly — Steel login happens inside iframe
+  if (iframe) {
+    if (iframe.src !== viewerUrl) {
+      iframe.src = viewerUrl
+    }
+    iframe.style.display = 'block'
     empty.style.display = 'none'
-  } else {
-    if (img) img.style.display = 'none'
-    empty.style.display = 'flex'
-    empty.style.flexDirection = 'column'
-    empty.style.alignItems = 'center'
-    empty.style.gap = '10px'
-    empty.style.marginTop = '28px'
-    empty.innerHTML = `
-      <div style="font-size:9px;color:#52525B;letter-spacing:.1em">${isComplete ? 'COMPLETE' : isError ? 'ERROR' : 'RUNNING'}</div>
-      <div style="font-size:9px;color:#3F3F46">Loading screenshots...</div>
-    `
+
+    // Add FULL SCREEN button bottom right
+    const existingBtn = document.getElementById('fs-overlay-btn')
+    if (existingBtn) existingBtn.remove()
+    const fsBtn = document.createElement('button')
+    fsBtn.id = 'fs-overlay-btn'
+    fsBtn.textContent = 'FULL SCREEN'
+    fsBtn.style.cssText = `position:absolute;bottom:48px;right:8px;z-index:10;background:rgba(0,0,0,0.8);color:#fff;border:1px solid #3F3F46;padding:5px 10px;border-radius:4px;font-size:8px;font-weight:600;cursor:pointer;letter-spacing:.06em`
+    fsBtn.onclick = () => window.open(viewerUrl, '_blank')
+    iframe.parentElement.appendChild(fsBtn)
+
+    // Show WATCH LIVE button top right
+    const takeControlBtn = document.getElementById('take-control-btn')
+    if (takeControlBtn) {
+      takeControlBtn.style.display = 'flex'
+      takeControlBtn.textContent = 'WATCH LIVE'
+      takeControlBtn.style.background = accentColor
+      takeControlBtn.onclick = () => window.open(viewerUrl, '_blank')
+    }
+
+    // Show screenshot on top of iframe if available
+    const screenshot = activeTask && activeTask.latestScreenshot
+    if (screenshot && img) {
+      img.src = 'data:image/png;base64,' + screenshot
+      img.style.cssText = 'position:absolute;top:28px;left:0;width:100%;height:calc(100% - 68px);object-fit:cover;display:block;z-index:2'
+    }
   }
-
-  // WATCH LIVE button
-  if (takeControlBtn) {
-    takeControlBtn.style.display = 'flex'
-    takeControlBtn.textContent = 'WATCH LIVE'
-    takeControlBtn.style.background = accentColor
-    takeControlBtn.onclick = () => window.open(url, '_blank')
-  }
-
-  // FULL SCREEN button at bottom
-  removeLiveOverlays()
-  const helper = document.createElement('div')
-  helper.id = 'login-helper'
-  helper.style.cssText = 'position:absolute;bottom:40px;left:0;right:0;z-index:10;background:rgba(0,0,0,0.85);padding:6px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px'
-  helper.innerHTML = `
-    <span style="font-size:8px;color:#71717A;letter-spacing:.05em">Open interactive browser</span>
-    <button onclick="window.open('${url}','_blank')" style="background:#6366F1;color:#fff;border:none;padding:4px 10px;border-radius:4px;font-size:8px;font-weight:600;cursor:pointer;white-space:nowrap;letter-spacing:.05em">FULL SCREEN</button>
-  `
-  const liveBox = document.getElementById('live-box')
-  if (liveBox) liveBox.appendChild(helper)
-}
-
-function removeLiveOverlays() {
-  ['login-helper','fs-overlay-btn','interaction-banner','watch-live-btn','take-control-overlay'].forEach(id => {
-    const el = document.getElementById(id)
-    if (el) el.remove()
-  })
 }
 
 function showScreenshot(src) {
@@ -557,7 +525,7 @@ function showScreenshot(src) {
   document.getElementById('live-empty').style.display = 'none'
 }
 
-async function connectWS(taskId) {
+function connectWS(taskId) {
   if (ws) ws.close()
   try {
     ws = new WebSocket(CONFIG.wsUrl)
@@ -576,14 +544,6 @@ async function connectWS(taskId) {
           activeTask = {...activeTask,...data}
           document.getElementById('m-progress').textContent = `${data.progress||0}/${data.total||0}`
           document.getElementById('live-prog').textContent = `${data.progress||0}/${data.total||0}`
-          // Update live view with Steel URL and screenshot
-          if (data.liveUrl || activeTask.liveUrl) {
-            showLiveIframe(data.liveUrl || activeTask.liveUrl, data.status || activeTask.status, data.needsInteraction)
-          }
-          if (data.latestScreenshot) {
-            const img = document.getElementById('live-img')
-            if (img) { img.src = 'data:image/png;base64,' + data.latestScreenshot; img.style.display = 'block'; document.getElementById('live-empty').style.display = 'none' }
-          }
         }
         if (data.type==='captcha') {
           document.getElementById('captcha-bar').classList.add('show')
@@ -757,31 +717,18 @@ async function sendMsg() {
     const data = await res.json()
     chat[chat.length-1] = {role:'agent', msg: data.response}
     renderChat()
-    if (data.launchTask) {
-      chat.push({role:'agent', msg:'Launching task now...'})
+    if (data.launchTask && data.goal) {
+      chat.push({role:'agent', msg:'🚀 Launching task now...'})
       renderChat()
-      let taskRes
-      if (data.taskType && data.taskType !== 'dynamic' && data.config) {
-        // Structured task (google_maps_scrape, airbnb_outreach, etc)
-        taskRes = await fetch(CONFIG.serverUrl+'/api/task/start', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({taskType: data.taskType, config: data.config, label: data.taskType})
-        })
-      } else if (data.goal) {
-        // Dynamic AI task
-        taskRes = await fetch(CONFIG.serverUrl+'/api/task/dynamic', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({goal: data.goal, context: ''})
-        })
-      }
-      if (taskRes) {
-        const {taskId} = await taskRes.json()
-        connectWS(taskId); startScreenshotPoll(taskId)
-        fetchTasks()
-        setTimeout(() => setTab('operator'), 1000)
-      }
+      const taskRes = await fetch(CONFIG.serverUrl+'/api/task/dynamic', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({goal: data.goal, context: ''})
+      })
+      const {taskId} = await taskRes.json()
+      connectWS(taskId)
+      fetchTasks()
+      setTimeout(() => setTab('operator'), 1000)
     }
   } catch(e) {
     chat[chat.length-1] = {role:'agent', msg:'Cannot reach server.'}
@@ -836,83 +783,6 @@ async function runNow() {
     const data = await res.json()
     alert(data.success ? '⚡ GitHub runner triggered!' : 'Trigger failed: ' + (data.error || 'unknown'))
   } catch(e) { alert('Cannot reach server: ' + e.message) }
-}
-
-// ============================================================
-// Credentials Management
-// ============================================================
-async function loadCredentials() {
-  try {
-    const res = await fetch(CONFIG.serverUrl + '/api/credentials/all')
-    const creds = await res.json()
-    const list = document.getElementById('credentials-list')
-    if (!list) return
-    if (!creds.length) {
-      list.innerHTML = '<div style="font-size:9px;color:#52525B;padding:8px 0">No saved credentials</div>'
-      return
-    }
-    list.innerHTML = creds.map(c => `
-      <div style="display:flex;justify-content:space-between;align-items:center;padding:8px 0;border-bottom:1px solid #1A1A1A">
-        <div>
-          <div style="font-size:10px;font-weight:600;letter-spacing:.05em">${c.platform.toUpperCase()}</div>
-          <div style="font-size:9px;color:#52525B">${c.username}</div>
-        </div>
-        <button onclick="deleteCredential('${c.platform}')" style="background:transparent;color:#ef4444;border:1px solid #ef4444;padding:3px 8px;border-radius:4px;font-size:8px;cursor:pointer">DELETE</button>
-      </div>
-    `).join('')
-  } catch(e) { console.error('Load credentials error:', e) }
-}
-
-async function saveCredential() {
-  const platform = document.getElementById('cred-platform')?.value
-  const username = document.getElementById('cred-username')?.value?.trim()
-  const password = document.getElementById('cred-password')?.value?.trim()
-  if (!platform || !username || !password) { alert('Fill all fields'); return }
-  try {
-    const res = await fetch(CONFIG.serverUrl + '/api/credentials/save', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ platform, username, password })
-    })
-    const data = await res.json()
-    if (data.success) {
-      alert(`✓ ${platform} credentials saved`)
-      document.getElementById('cred-username').value = ''
-      document.getElementById('cred-password').value = ''
-      loadCredentials()
-    } else {
-      alert('Failed: ' + (data.error?.message || data.error || 'Unknown error'))
-    }
-  } catch(e) { alert('Error: ' + e.message) }
-}
-
-async function deleteCredential(platform) {
-  if (!confirm(`Delete ${platform} credentials?`)) return
-  try {
-    await fetch(CONFIG.serverUrl + '/api/credentials/' + platform, { method: 'DELETE' })
-    loadCredentials()
-  } catch(e) { alert('Error: ' + e.message) }
-}
-
-async function saveSession(platform) {
-  const task = activeTask
-  if (!task || !task.steelSessionId) {
-    alert('No active Steel session. Start a task first, login manually, then save the session.')
-    return
-  }
-  try {
-    const res = await fetch(CONFIG.serverUrl + '/api/sessions/save', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ platform, steelSessionId: task.steelSessionId })
-    })
-    const data = await res.json()
-    if (data.success) {
-      alert(`✓ ${platform} session saved (${data.cookieCount} cookies). Future tasks will be auto-logged in.`)
-    } else {
-      alert('Failed: ' + data.error)
-    }
-  } catch(e) { alert('Error: ' + e.message) }
 }
 
 async function stopActiveTask() {
@@ -1019,13 +889,6 @@ function renderTaskFields() {
     html = `
       <div class="field"><div class="lbl" style="margin-bottom:6px">TOPIC</div><input type="text" placeholder="e.g. plumbers in Toronto" onchange="taskConfig.topic=this.value"/></div>
       <div class="field-last"><div class="lbl" style="margin-bottom:6px">GOAL</div><input type="text" placeholder="e.g. find pain points" onchange="taskConfig.goal=this.value"/></div>`
-  } else if (type==='airbnb_outreach') {
-    html = `
-      <div class="field"><div class="lbl" style="margin-bottom:6px">CITY</div><input type="text" placeholder="e.g. Miami, Paris, Montreal" onchange="taskConfig.city=this.value"/></div>
-      <div class="field"><div class="lbl" style="margin-bottom:6px">AIRBNB EMAIL</div><input type="email" placeholder="your@email.com" onchange="taskConfig.email=this.value"/></div>
-      <div class="field"><div class="lbl" style="margin-bottom:6px">AIRBNB PASSWORD</div><input type="password" placeholder="••••••••" onchange="taskConfig.password=this.value"/></div>
-      <div class="field"><div class="lbl" style="margin-bottom:6px">MESSAGE</div><textarea rows="4" placeholder="Hi, I came across your listing..." onchange="taskConfig.message=this.value"></textarea></div>
-      <div class="field-last"><div class="lbl" style="margin-bottom:6px">MAX MESSAGES</div><input type="number" value="10" onchange="taskConfig.maxMessages=parseInt(this.value)"/></div>`
   } else if (type==='dynamic') {
     html = `<div class="field-last"><div class="lbl" style="margin-bottom:6px">DESCRIBE YOUR GOAL</div><textarea rows="5" placeholder="e.g. Go to Pages Jaunes, search plumbers in Montreal, extract names and phones" onchange="taskConfig.goal=this.value"></textarea><div style="font-size:10px;color:#52525B;margin-top:6px">AI will plan and execute automatically</div></div>`
   }
@@ -1038,7 +901,7 @@ async function startTask() {
     const res = await fetch(CONFIG.serverUrl+'/api/task/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({taskType,config:taskConfig,label:taskType})})
     const {taskId} = await res.json()
     closeModal()
-    connectWS(taskId); startScreenshotPoll(taskId)
+    connectWS(taskId)
     fetchTasks()
     startScreenshotPolling(taskId)
   } catch(e) { alert('Server not reachable. Is Railway deployed?') }
