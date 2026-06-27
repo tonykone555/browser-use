@@ -1,6 +1,5 @@
-browser-use
+browser-use==0.1.40
 steel-sdk
 firebase-admin
 langchain-cerebras
 playwright
-
