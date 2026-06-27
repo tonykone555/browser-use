@@ -10,9 +10,6 @@ import { getFirestore } from 'firebase-admin/firestore';
 import path from 'path';
 import fs from 'fs';
 
-// ============================================================
-// Firebase Init
-// ============================================================
 if (getApps().length === 0) {
   if (process.env.FIREBASE_PRIVATE_KEY) {
     initializeApp({
@@ -28,9 +25,6 @@ if (getApps().length === 0) {
 }
 const db = getFirestore();
 
-// ============================================================
-// Groq — console chat only
-// ============================================================
 const GROQ_API_KEY = process.env.GROQ_API_KEY || '';
 const GROQ_MODEL = 'llama-3.3-70b-versatile';
 
@@ -65,7 +59,6 @@ const callLLMChat = async (systemPrompt: string, messages: any[]): Promise<strin
     ...messages.map(m => ({ role: m.role === 'agent' ? 'assistant' : 'user', content: m.msg || m.content || '' })),
   ]);
 
-
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN || '';
 const GITHUB_REPO = 'tonykone555/browser-use';
 
@@ -73,19 +66,15 @@ const triggerGitHubActions = async () => {
   if (!GITHUB_TOKEN) { console.log('No GitHub token'); return; }
   try {
     const url = `https://api.github.com/repos/${GITHUB_REPO}/actions/workflows/browser-agent.yml/dispatches`;
-    console.log('Triggering GitHub:', url);
     const res = await axios.post(url, { ref: 'main' }, {
       headers: { Authorization: `Bearer ${GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' }
     });
-    console.log('GitHub triggered successfully:', res.status);
+    console.log('GitHub triggered:', res.status);
   } catch (e: any) {
-    console.log('GitHub trigger FAILED:', e.response?.status, JSON.stringify(e.response?.data), e.message);
+    console.log('GitHub trigger FAILED:', e.response?.status, e.message);
   }
 };
 
-// ============================================================
-// Server
-// ============================================================
 const app = express();
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server });
@@ -98,9 +87,6 @@ const taskLogs = new Map<string, any[]>();
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
-// ============================================================
-// WebSocket
-// ============================================================
 wss.on('connection', (ws: WebSocket & { taskId?: string }) => {
   ws.on('message', (data: string) => {
     try {
@@ -117,9 +103,6 @@ const sendWS = (taskId: string, data: any) => {
   if (client && client.readyState === 1) client.send(JSON.stringify(data));
 };
 
-// ============================================================
-// Firebase → WebSocket bridge (polls every 2s)
-// ============================================================
 setInterval(async () => {
   for (const [taskId, ws] of wsClients.entries()) {
     if (ws.readyState !== 1) continue;
@@ -161,9 +144,6 @@ setInterval(async () => {
   }
 }, 2000);
 
-// ============================================================
-// Helpers
-// ============================================================
 const logAction = async (taskId: string, msg: string, type = 'info') => {
   const entry = { time: new Date().toLocaleTimeString('en-GB'), msg, type, timestamp: Date.now() };
   try { await db.collection('assix_tasks').doc(taskId).collection('logs').add(entry); } catch (e) {}
@@ -201,9 +181,6 @@ const pushToClose = async (lead: any) => {
   } catch (e: any) { return { error: e.message }; }
 };
 
-// ============================================================
-// Routes
-// ============================================================
 app.get('/health', (req, res) => res.json({ status: 'ok', mode: 'github-actions', timestamp: Date.now() }));
 
 app.get('/api/task/:taskId/screenshot', async (req, res) => {
@@ -284,7 +261,12 @@ app.get('/api/task/:taskId/status', async (req, res) => {
     const doc = await db.collection('assix_tasks').doc(req.params.taskId).get();
     if (!doc.exists) return res.status(404).json({ error: 'Not found' });
     const logs = await db.collection('assix_tasks').doc(req.params.taskId).collection('logs').orderBy('timestamp').limit(100).get();
-    res.json({ task: doc.data(), logs: logs.docs.map(d => d.data()) });
+    const messages = await db.collection('assix_tasks').doc(req.params.taskId).collection('messages').orderBy('timestamp').limit(50).get();
+    res.json({
+      task: doc.data(),
+      logs: logs.docs.map(d => d.data()),
+      messages: messages.docs.map(d => d.data()),
+    });
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
@@ -316,7 +298,6 @@ app.post('/api/task/:taskId/resolve', async (req, res) => {
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
-// ✅ FIXED — actually deletes from Firebase instead of just updating status
 app.delete('/api/task/:taskId', async (req, res) => {
   try {
     await db.collection('assix_tasks').doc(req.params.taskId).delete();
@@ -376,20 +357,6 @@ app.get('/api/leads/all', async (req, res) => {
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/api/leads/no-website', async (req, res) => {
-  try {
-    const s = await db.collection('leads').where('leadType', '==', 'no_website').limit(100).get();
-    res.json(s.docs.map(d => ({ leadId: d.id, ...d.data() })));
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
-});
-
-app.get('/api/leads/has-website', async (req, res) => {
-  try {
-    const s = await db.collection('leads').where('leadType', '==', 'has_website').limit(100).get();
-    res.json(s.docs.map(d => ({ leadId: d.id, ...d.data() })));
-  } catch (err: any) { res.status(500).json({ error: err.message }); }
-});
-
 app.post('/api/leads/:leadId/push-close', async (req, res) => {
   try {
     const doc = await db.collection('leads').doc(req.params.leadId).get();
@@ -415,64 +382,35 @@ app.post('/api/leads/push-close-batch', async (req, res) => {
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
-
-// Save browser session cookies from Steel
 app.post('/api/sessions/save', async (req, res) => {
   try {
     const { platform, steelSessionId } = req.body;
     if (!steelSessionId) return res.status(400).json({ error: 'No Steel session ID' });
-    
-    // Fetch cookies from Steel session
     const r = await axios.get(
       `https://api.steel.dev/v1/sessions/${steelSessionId}/cookies`,
       { headers: { 'Steel-Api-Key': process.env.STEEL_API_KEY || '' } }
     );
     const cookies = r.data?.cookies || [];
-    
     await db.collection('assix_sessions').doc(platform).set({
-      cookies,
-      savedAt: new Date().toISOString(),
-      steelSessionId,
+      cookies, savedAt: new Date().toISOString(), steelSessionId,
     });
-    
-    console.log(`Session saved for ${platform}: ${cookies.length} cookies`);
     res.json({ success: true, cookieCount: cookies.length });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
-
-
-// ============================================================
-// Skyvern Credentials Management
-// ============================================================
 
 app.post('/api/credentials/save', async (req, res) => {
   try {
     const { platform, username, password } = req.body;
     if (!username || !password) return res.status(400).json({ error: 'Username and password required' });
-    
-    // Save to Skyvern vault via their API
     const r = await axios.post(
       'https://api.skyvern.com/v1/credentials',
-      {
-        name: `Assix - ${platform}`,
-        credential_type: 'password',
-        credential: { username, password }
-      },
+      { name: `Assix - ${platform}`, credential_type: 'password', credential: { username, password } },
       { headers: { 'x-api-key': process.env.SKYVERN_API_KEY || '', 'Content-Type': 'application/json' } }
     );
-    
     const credentialId = r.data?.credential_id || r.data?.id;
-    
-    // Save credential ID to Firebase for reference
     await db.collection('assix_credentials').doc(platform).set({
-      platform,
-      username,
-      skyvernCredentialId: credentialId,
-      savedAt: new Date().toISOString(),
+      platform, username, skyvernCredentialId: credentialId, savedAt: new Date().toISOString(),
     });
-    
     res.json({ success: true, credentialId });
   } catch (err: any) {
     res.status(500).json({ error: typeof err.response?.data === 'object' ? JSON.stringify(err.response.data) : err.message });
@@ -482,14 +420,8 @@ app.post('/api/credentials/save', async (req, res) => {
 app.get('/api/credentials/all', async (req, res) => {
   try {
     const snap = await db.collection('assix_credentials').get();
-    res.json(snap.docs.map(d => ({
-      platform: d.id,
-      username: d.data().username,
-      savedAt: d.data().savedAt,
-    })));
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
+    res.json(snap.docs.map(d => ({ platform: d.id, username: d.data().username, savedAt: d.data().savedAt })));
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
 app.delete('/api/credentials/:platform', async (req, res) => {
@@ -498,17 +430,13 @@ app.delete('/api/credentials/:platform', async (req, res) => {
     if (doc.exists) {
       const credId = doc.data()?.skyvernCredentialId;
       if (credId) {
-        await axios.delete(
-          `https://api.skyvern.com/v1/credentials/${credId}`,
-          { headers: { 'x-api-key': process.env.SKYVERN_API_KEY || '' } }
-        ).catch(() => {});
+        await axios.delete(`https://api.skyvern.com/v1/credentials/${credId}`,
+          { headers: { 'x-api-key': process.env.SKYVERN_API_KEY || '' } }).catch(() => {});
       }
       await doc.ref.delete();
     }
     res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ error: err.message });
-  }
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/api/sessions/all', async (req, res) => {
@@ -539,16 +467,11 @@ app.post('/api/scrape/universal', async (req, res) => {
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
-
-
-
-// Send command to running task
 app.post('/api/task/:taskId/command', async (req, res) => {
   try {
     const { command } = req.body;
     await db.collection('assix_tasks').doc(req.params.taskId).update({
-      pendingCommand: command,
-      commandSentAt: new Date().toISOString(),
+      pendingCommand: command, commandSentAt: new Date().toISOString(),
     });
     res.json({ success: true });
   } catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -558,44 +481,20 @@ app.post('/api/trigger', async (req, res) => {
   try {
     await triggerGitHubActions();
     res.json({ success: true });
-  } catch (err: any) {
-    res.status(500).json({ success: false, error: err.message });
-  }
+  } catch (err: any) { res.status(500).json({ success: false, error: err.message }); }
 });
 
 app.post('/api/console/smart', async (req, res) => {
   try {
     const { message, history = [] } = req.body;
-
-    const systemPrompt = `You are Assix Agent — an intelligent browser automation assistant built into a dashboard.
-Your job is to help users automate tasks on ANY website: Leboncoin, Airbnb, Reddit, Instagram, WhatsApp, Google Maps, LinkedIn, and more.
-
-When a user wants to do something on a website, gather ALL necessary information through natural conversation before launching the task:
-- What website/platform?
-- What action? (send messages, scrape data, post listings, login, etc.)
-- What search criteria? (city, category, type, keywords)
-- What message to send? (ask them to write it — NEVER suggest a pre-written message)
-- How many targets? (listings, users, etc.)
-- Any login needed? (ask for credentials only if needed)
-
-IMPORTANT RULES:
-- Ask ONE question at a time
-- Be concise and direct
-- NEVER write the message for them — always ask them to provide it
-- Once you have ALL info needed, set launchTask=true and build the complete goal
-- If the user reports an error or problem, acknowledge it and suggest what to try differently
-- For ANY website task, build a detailed natural language goal that browser-use can execute
-- Support tasks like: login to site, send messages, scrape listings, post ads, fill forms, extract data
-
-When you have enough info to launch, respond with JSON:
-{"response": "msg", "launchTask": true, "goal": null, "taskType": "google_maps_scrape", "config": {"niche": "...", "city": "...", "maxLeads": 10}}
-For Airbnb outreach: {"response": "msg", "launchTask": true, "goal": null, "taskType": "airbnb_outreach", "config": {"city": "...", "message": "...", "maxMessages": 10}}
-For any other task: {"response": "msg", "launchTask": true, "goal": "full detailed task", "taskType": "dynamic", "config": {}}
-
-When still gathering info, respond with JSON:
-{"response": "your next question", "launchTask": false, "goal": null}
-
-Always respond in valid JSON only. No markdown.`;
+    const systemPrompt = `You are Assix Agent — an intelligent browser automation assistant.
+Help users automate tasks on any website. Gather info through conversation before launching.
+Ask ONE question at a time. Be concise. Never write messages for them.
+When ready to launch respond with JSON:
+{"response":"msg","launchTask":true,"taskType":"google_maps_scrape","config":{"niche":"...","city":"...","maxLeads":10}}
+When gathering info:
+{"response":"your question","launchTask":false,"goal":null}
+Always respond in valid JSON only.`;
 
     const messages = [
       { role: 'system', content: systemPrompt },
@@ -607,7 +506,6 @@ Always respond in valid JSON only. No markdown.`;
     ];
 
     const raw = await callGroq(messages);
-
     let parsed: any = { response: raw, launchTask: false, goal: null };
     try {
       const cleaned = raw.replace(/```json/g, '').replace(/```/g, '').trim();
@@ -616,14 +514,10 @@ Always respond in valid JSON only. No markdown.`;
     } catch (e) {
       parsed = { response: raw, launchTask: false, goal: null };
     }
-
     res.json(parsed);
   } catch (err: any) { res.status(500).json({ response: 'Error: ' + err.message, launchTask: false, goal: null }); }
 });
 
-// ============================================================
-// Serve frontend
-// ============================================================
 const publicDir = path.join(process.cwd(), 'public');
 app.use(express.static(publicDir));
 app.get('*', (req, res) => {
@@ -633,4 +527,4 @@ app.get('*', (req, res) => {
 });
 
 const PORT = parseInt(process.env.PORT || '8080');
-server.listen(PORT, '0.0.0.0', () => console.log(`Assix v3 (GitHub Actions mode) running on port ${PORT}`));
+server.listen(PORT, '0.0.0.0', () => console.log(`Assix v3 running on port ${PORT}`));
