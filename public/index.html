@@ -501,15 +501,29 @@ function showLiveIframe(url, status, needsLogin) {
   const isError = status === 'error'
   const accentColor = isComplete ? '#22c55e' : isError ? '#ef4444' : '#6366F1'
 
-  // Show iframe with Steel session
-  if (iframe) {
-    if (iframe.src !== url) iframe.src = url
-    iframe.style.display = 'block'
-  }
-  if (img) img.style.display = 'none'
-  empty.style.display = 'none'
+  // Hide iframe — show screenshots instead
+  if (iframe) { iframe.style.display = 'none'; iframe.src = '' }
 
-  // Show WATCH LIVE button
+  // Show screenshot if available, else show placeholder
+  const screenshot = activeTask && activeTask.latestScreenshot
+  if (screenshot && img) {
+    img.src = 'data:image/png;base64,' + screenshot
+    img.style.cssText = 'width:100%;height:100%;object-fit:cover;display:block;margin-top:28px'
+    empty.style.display = 'none'
+  } else {
+    if (img) img.style.display = 'none'
+    empty.style.display = 'flex'
+    empty.style.flexDirection = 'column'
+    empty.style.alignItems = 'center'
+    empty.style.gap = '10px'
+    empty.style.marginTop = '28px'
+    empty.innerHTML = `
+      <div style="font-size:9px;color:#52525B;letter-spacing:.1em">${isComplete ? 'COMPLETE' : isError ? 'ERROR' : 'RUNNING'}</div>
+      <div style="font-size:9px;color:#3F3F46">Loading screenshots...</div>
+    `
+  }
+
+  // WATCH LIVE button
   if (takeControlBtn) {
     takeControlBtn.style.display = 'flex'
     takeControlBtn.textContent = 'WATCH LIVE'
@@ -517,25 +531,17 @@ function showLiveIframe(url, status, needsLogin) {
     takeControlBtn.onclick = () => window.open(url, '_blank')
   }
 
-  // Add LOGIN FULL SCREEN helper at bottom
+  // FULL SCREEN button at bottom
   removeLiveOverlays()
   const helper = document.createElement('div')
   helper.id = 'login-helper'
   helper.style.cssText = 'position:absolute;bottom:40px;left:0;right:0;z-index:10;background:rgba(0,0,0,0.85);padding:6px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px'
   helper.innerHTML = `
-    <span style="font-size:8px;color:#71717A;letter-spacing:.05em">Tap to open full screen</span>
+    <span style="font-size:8px;color:#71717A;letter-spacing:.05em">Open interactive browser</span>
     <button onclick="window.open('${url}','_blank')" style="background:#6366F1;color:#fff;border:none;padding:4px 10px;border-radius:4px;font-size:8px;font-weight:600;cursor:pointer;white-space:nowrap;letter-spacing:.05em">FULL SCREEN</button>
   `
   const liveBox = document.getElementById('live-box')
   if (liveBox) liveBox.appendChild(helper)
-
-  // Screenshot overlay on top of iframe if available
-  const screenshot = activeTask && activeTask.latestScreenshot
-  if (screenshot && img) {
-    img.src = 'data:image/png;base64,' + screenshot
-    img.style.cssText = 'position:absolute;top:28px;left:0;width:100%;height:calc(100% - 28px);object-fit:cover;display:block;z-index:1'
-    if (iframe) iframe.style.zIndex = '0'
-  }
 }
 
 function removeLiveOverlays() {
