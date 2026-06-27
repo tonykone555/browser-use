@@ -454,7 +454,7 @@ app.post('/api/credentials/save', async (req, res) => {
     
     // Save to Skyvern vault via their API
     const r = await axios.post(
-      'https://api.skyvern.com/api/v1/credentials',
+      'https://api.skyvern.com/v1/credentials',
       {
         name: `Assix - ${platform}`,
         credential_type: 'password',
@@ -475,7 +475,7 @@ app.post('/api/credentials/save', async (req, res) => {
     
     res.json({ success: true, credentialId });
   } catch (err: any) {
-    res.status(500).json({ error: err.response?.data || err.message });
+    res.status(500).json({ error: typeof err.response?.data === 'object' ? JSON.stringify(err.response.data) : err.message });
   }
 });
 
@@ -499,7 +499,7 @@ app.delete('/api/credentials/:platform', async (req, res) => {
       const credId = doc.data()?.skyvernCredentialId;
       if (credId) {
         await axios.delete(
-          `https://api.skyvern.com/api/v1/credentials/${credId}`,
+          `https://api.skyvern.com/v1/credentials/${credId}`,
           { headers: { 'x-api-key': process.env.SKYVERN_API_KEY || '' } }
         ).catch(() => {});
       }
