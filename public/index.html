@@ -517,27 +517,14 @@ function showLiveIframe(url, status, needsLogin) {
     empty.innerHTML = `<span style="font-size:9px;color:#52525B;letter-spacing:.1em">${statusLabel}</span><span style="font-size:9px;color:#3F3F46">Loading browser...</span>`
   }
 
-  // Remove old overlays
-  removeLiveOverlays()
-
-  // Add WATCH LIVE button overlay
-  const liveBtn = document.createElement('button')
-  liveBtn.id = 'watch-live-btn'
-  liveBtn.textContent = 'WATCH LIVE'
-  liveBtn.style.cssText = `position:absolute;bottom:48px;left:8px;z-index:10;background:${accentColor};color:#fff;border:none;padding:5px 10px;border-radius:4px;font-size:8px;font-weight:700;cursor:pointer;letter-spacing:.06em`
-  liveBtn.onclick = () => window.open(url, '_blank')
-  document.getElementById('live-box').appendChild(liveBtn)
-
-  // Add TAKE CONTROL button overlay
-  const ctrlBtn = document.createElement('button')
-  ctrlBtn.id = 'take-control-overlay'
-  ctrlBtn.textContent = 'TAKE CONTROL'
-  ctrlBtn.style.cssText = `position:absolute;bottom:48px;right:8px;z-index:10;background:rgba(0,0,0,0.8);color:#fff;border:1px solid #3F3F46;padding:5px 10px;border-radius:4px;font-size:8px;font-weight:600;cursor:pointer;letter-spacing:.06em`
-  ctrlBtn.onclick = () => {
-    const w = window.open(url, 'steel-control', 'width=900,height=700,scrollbars=yes')
-    if (!w) window.open(url, '_blank')
+  // Show the existing TAKE CONTROL button
+  const takeControlBtn = document.getElementById('take-control-btn')
+  if (takeControlBtn) {
+    takeControlBtn.style.display = 'flex'
+    takeControlBtn.textContent = 'WATCH LIVE'
+    takeControlBtn.style.background = accentColor
+    takeControlBtn.onclick = () => window.open(url, '_blank')
   }
-  document.getElementById('live-box').appendChild(ctrlBtn)
 }
 
 function removeLiveOverlays() {
@@ -572,6 +559,14 @@ async function connectWS(taskId) {
           activeTask = {...activeTask,...data}
           document.getElementById('m-progress').textContent = `${data.progress||0}/${data.total||0}`
           document.getElementById('live-prog').textContent = `${data.progress||0}/${data.total||0}`
+          // Update live view with Steel URL and screenshot
+          if (data.liveUrl || activeTask.liveUrl) {
+            showLiveIframe(data.liveUrl || activeTask.liveUrl, data.status || activeTask.status, data.needsInteraction)
+          }
+          if (data.latestScreenshot) {
+            const img = document.getElementById('live-img')
+            if (img) { img.src = 'data:image/png;base64,' + data.latestScreenshot; img.style.display = 'block'; document.getElementById('live-empty').style.display = 'none' }
+          }
         }
         if (data.type==='captcha') {
           document.getElementById('captcha-bar').classList.add('show')
