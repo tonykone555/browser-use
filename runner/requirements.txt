@@ -1,2 +1,6 @@
-skyvern
+browser-use
+steel-sdk
 firebase-admin
+langchain-cerebras
+playwright
+
