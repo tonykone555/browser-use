@@ -10,7 +10,8 @@ from urllib.parse import quote
 
 import firebase_admin
 from firebase_admin import credentials, firestore
-from browser_use import Agent, Browser, BrowserConfig
+from browser_use import Agent, Browser
+from browser_use.browser.browser import BrowserConfig
 from langchain_cerebras import ChatCerebras
 from steel import Steel
 
