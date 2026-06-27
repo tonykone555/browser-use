@@ -37,6 +37,9 @@ def log(task_id: str, msg: str, log_type: str = "info"):
     }
     try:
         task_ref = db.collection("assix_tasks").document(task_id)
+        # Write to subcollection for real-time polling
+        task_ref.collection("logs").add(entry)
+        # Also update recentLogs array for WebSocket bridge
         task_data = task_ref.get().to_dict() or {}
         recent_logs = task_data.get("recentLogs", [])
         recent_logs.append(entry)
@@ -166,19 +169,19 @@ def build_goal(task_type: str, config: dict) -> str:
 
 Wait 3 seconds for results to load.
 
-The left panel already shows all business details directly in the list including phone numbers, websites and addresses. You do NOT need to click each business.
-
-Simply read the left panel list and extract for each business:
+Read the LEFT PANEL list directly. Extract for each business:
 - Business name
 - Phone number (format: +1 XXX-XXX-XXXX)
 - Website URL
 - Address
 
-Scroll down in the left panel to load more businesses if needed.
+Collect {max_leads} businesses from the visible list.
+Scroll down in the left panel only if you need more results.
 
-Collect {max_leads} businesses total.
+IMPORTANT: As soon as you have {max_leads} businesses collected,
+output the JSON immediately and STOP. Do not keep browsing.
 
-Output ONLY this JSON at the very end, nothing else:
+Output ONLY this JSON then stop immediately:
 [{{"name":"Stack Electric","phone":"+19055129428","website":"https://www.stackelectric.ca/","address":"558 Upper Gage Ave Suite 104, Hamilton"}}]"""
 
     elif task_type == "pages_jaunes_scrape":
@@ -186,13 +189,13 @@ Output ONLY this JSON at the very end, nothing else:
 
 Wait for results to load.
 
-For each business listing on the page:
-1. Extract business name
-2. Extract phone number
-3. Extract website if available
-4. Extract address
+Extract for each business listing:
+- Business name
+- Phone number
+- Website if available
+- Address
 
-Collect {max_leads} businesses then output ONLY this JSON:
+Collect {max_leads} businesses then output ONLY this JSON and stop:
 [{{"name":"...","phone":"...","website":"...","address":"..."}}]"""
 
     elif task_type == "airbnb_outreach":
@@ -249,7 +252,6 @@ async def main():
 
     print(f"Task: {task_id} — {task_type}")
 
-    # Mark as claimed immediately
     db.collection("assix_tasks").document(task_id).update({
         "status": "running",
         "claimedAt": datetime.now().isoformat(),
@@ -274,41 +276,37 @@ async def main():
     print(f"Steel session: {session.id}")
     print(f"Live URL: {live_url}")
 
-    # Save liveUrl IMMEDIATELY so frontend shows it right away
+    # Save liveUrl IMMEDIATELY
     db.collection("assix_tasks").document(task_id).update({
         "liveUrl": live_url,
         "steelSessionId": session.id,
         "startedAt": datetime.now().isoformat(),
     })
 
-    log(task_id, f"Steel session ready", "success")
+    log(task_id, "Steel session ready", "success")
     log(task_id, f"Live: {live_url}", "success")
     log(task_id, "Opening browser...", "info")
 
     platform = detect_platform(goal)
     cookies = load_session_cookies(platform)
 
-    # Screenshot loop — every 5 seconds
+    # Screenshot loop — uses Steel SDK directly
     stop_screenshots = threading.Event()
 
     def screenshot_loop():
-        import requests as req
-        # Wait 5 seconds before first screenshot
-        time.sleep(5)
+        time.sleep(8)
         while not stop_screenshots.is_set():
             try:
-                r = req.get(
-                    f"https://api.steel.dev/v1/sessions/{session.id}/screenshot",
-                    headers={"Steel-Api-Key": os.environ.get("STEEL_API_KEY", "")},
-                    timeout=5
-                )
-                if r.status_code == 200 and len(r.content) > 1000:
-                    img_b64 = base64.b64encode(r.content).decode("utf-8")
+                screenshot_bytes = steel_client.sessions.screenshot(session.id)
+                if screenshot_bytes and len(screenshot_bytes) > 1000:
+                    img_b64 = base64.b64encode(screenshot_bytes).decode("utf-8")
                     db.collection("assix_tasks").document(task_id).update({
                         "latestScreenshot": img_b64,
                         "screenshotAt": int(datetime.now().timestamp() * 1000),
                     })
-                    print(f"Screenshot saved: {len(r.content)} bytes")
+                    print(f"✓ Screenshot: {len(screenshot_bytes)} bytes")
+                else:
+                    print(f"Screenshot empty: {len(screenshot_bytes) if screenshot_bytes else 0} bytes")
             except Exception as e:
                 print(f"Screenshot error: {e}")
             time.sleep(5)
@@ -338,7 +336,12 @@ async def main():
 
     try:
         log(task_id, "Agent running...")
-        history = await agent.run(max_steps=60)
+
+        # Reduced max_steps — Google Maps list needs very few steps
+        is_scraping = task_type in ["google_maps_scrape", "pages_jaunes_scrape"]
+        max_steps = 15 if is_scraping else 60
+
+        history = await agent.run(max_steps=max_steps)
 
         stop_screenshots.set()
 
@@ -370,24 +373,22 @@ async def main():
 
         log(task_id, f"Done. Success: {success}", "success" if success else "warning")
         if final_result:
-            log(task_id, f"Result: {final_result[:200]}")
+            log(task_id, f"Result preview: {final_result[:200]}")
 
-        is_scraping = task_type in ["google_maps_scrape", "pages_jaunes_scrape"]
         results = parse_results(final_result) if is_scraping else []
 
         if results:
             log(task_id, f"━━━ {len(results)} LEADS FOUND ━━━", "success")
             for i, item in enumerate(results):
                 save_lead(task_id, item, task_type)
-                # Log each lead clearly
                 log(task_id, f"#{i+1} {item.get('name','?')} · {format_phone(item.get('phone',''))} · {item.get('website','no website')}", "success")
-            log(task_id, f"━━━ ALL LEADS SAVED ━━━", "success")
+            log(task_id, "━━━ ALL LEADS SAVED ━━━", "success")
         else:
-            log(task_id, "No leads extracted — check final result", "warning")
+            log(task_id, "No leads extracted", "warning")
             if final_result:
                 log(task_id, f"Raw output: {final_result[:300]}", "info")
 
-        # Save summary to console chat in Firebase
+        # Save summary to console chat
         summary = f"Task complete: {task_type}\n"
         summary += f"City: {config.get('city','')}\n"
         summary += f"Niche: {config.get('niche','')}\n"
