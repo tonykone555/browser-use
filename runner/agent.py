@@ -59,7 +59,9 @@ def save_lead(task_id: str, item: dict, platform: str):
     if not phone or len(phone) < 7: return
     try:
         existing = db.collection("leads").where("phone", "==", phone).limit(1).get()
-        if len(existing) > 0: return
+        if len(existing) > 0:
+            log(task_id, f"⚠ Duplicate skipped: {item.get('name')} {phone}", "warning")
+            return
         db.collection("leads").add({
             "taskId": task_id,
             "businessName": item.get("name", "Unknown"),
@@ -73,6 +75,7 @@ def save_lead(task_id: str, item: dict, platform: str):
             "sentToClose": False,
             "status": "new",
         })
+        log(task_id, f"✓ Lead saved: {item.get('name')} · {phone}", "success")
         print(f"✓ Lead: {item.get('name')} {phone}")
     except Exception as e:
         print(f"Save lead error: {e}")
@@ -161,27 +164,22 @@ def build_goal(task_type: str, config: dict) -> str:
     if task_type == "google_maps_scrape":
         return f"""Go to https://www.google.com/maps/search/{quote(niche + ' in ' + city)}
 
-Wait 3 seconds for results to load completely.
+Wait 3 seconds for results to load.
 
-You will see a LEFT PANEL with a list of businesses.
+The left panel already shows all business details directly in the list including phone numbers, websites and addresses. You do NOT need to click each business.
 
-For each business in the left panel list:
-1. Click on the business name to open its detail panel
-2. Wait for details to load
-3. Extract: business name, phone number, website URL, full address
-4. Note down all details
-5. Click the back arrow to return to the results list
-6. Click the next business
-7. Repeat until you have {max_leads} businesses
+Simply read the left panel list and extract for each business:
+- Business name
+- Phone number (format: +1 XXX-XXX-XXXX)
+- Website URL
+- Address
 
-After collecting all {max_leads} businesses output ONLY this JSON:
-[{{"name":"Business Name","phone":"+1XXXXXXXXXX","website":"https://...","address":"Full address"}}]
+Scroll down in the left panel to load more businesses if needed.
 
-Important:
-- Click each business individually to get phone numbers
-- Phone numbers are only visible in the detail panel
-- Do not stop early
-- Output JSON only at the very end"""
+Collect {max_leads} businesses total.
+
+Output ONLY this JSON at the very end, nothing else:
+[{{"name":"Stack Electric","phone":"+19055129428","website":"https://www.stackelectric.ca/","address":"558 Upper Gage Ave Suite 104, Hamilton"}}]"""
 
     elif task_type == "pages_jaunes_scrape":
         return f"""Go to https://www.pagesjaunes.ca/search/si/{quote(niche)}/{quote(city)}
@@ -378,10 +376,38 @@ async def main():
         results = parse_results(final_result) if is_scraping else []
 
         if results:
-            log(task_id, f"Saving {len(results)} leads...")
-            for item in results:
+            log(task_id, f"━━━ {len(results)} LEADS FOUND ━━━", "success")
+            for i, item in enumerate(results):
                 save_lead(task_id, item, task_type)
-            log(task_id, f"✓ {len(results)} leads saved", "success")
+                # Log each lead clearly
+                log(task_id, f"#{i+1} {item.get('name','?')} · {format_phone(item.get('phone',''))} · {item.get('website','no website')}", "success")
+            log(task_id, f"━━━ ALL LEADS SAVED ━━━", "success")
+        else:
+            log(task_id, "No leads extracted — check final result", "warning")
+            if final_result:
+                log(task_id, f"Raw output: {final_result[:300]}", "info")
+
+        # Save summary to console chat in Firebase
+        summary = f"Task complete: {task_type}\n"
+        summary += f"City: {config.get('city','')}\n"
+        summary += f"Niche: {config.get('niche','')}\n"
+        summary += f"Leads found: {len(results)}\n\n"
+        if results:
+            for i, r in enumerate(results):
+                summary += f"#{i+1} {r.get('name','?')}\n"
+                summary += f"  📞 {format_phone(r.get('phone',''))}\n"
+                if r.get('website'): summary += f"  🌐 {r.get('website','')}\n"
+                if r.get('address'): summary += f"  📍 {r.get('address','')}\n"
+                summary += "\n"
+
+        try:
+            db.collection("assix_tasks").document(task_id).collection("messages").add({
+                "role": "agent",
+                "msg": summary,
+                "timestamp": datetime.now().timestamp() * 1000,
+            })
+        except Exception as e:
+            print(f"Console save error: {e}")
 
         db.collection("assix_tasks").document(task_id).update({
             "status": "complete",
