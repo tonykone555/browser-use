@@ -2,15 +2,17 @@ import asyncio
 import os
 import json
 import re
-import time
-import requests
 import base64
+import threading
+import time
 from datetime import datetime, timedelta
 from urllib.parse import quote
 
 import firebase_admin
 from firebase_admin import credentials, firestore
-from skyvern import Skyvern
+from browser_use import Agent, Browser, BrowserConfig
+from langchain_cerebras import ChatCerebras
+from steel import Steel
 
 if not firebase_admin._apps:
     cred = credentials.Certificate({
@@ -23,7 +25,6 @@ if not firebase_admin._apps:
     firebase_admin.initialize_app(cred)
 
 db = firestore.client()
-SKYVERN_API_KEY = os.environ.get("SKYVERN_API_KEY", "")
 
 def log(task_id: str, msg: str, log_type: str = "info"):
     print(f"[{log_type.upper()}] {msg}")
@@ -124,70 +125,87 @@ def cleanup_stuck():
     except Exception as e:
         print(f"Cleanup error: {e}")
 
-def get_credential_id(platform: str) -> str:
-    """Get saved Skyvern credential ID for a platform"""
-    try:
-        doc = db.collection("assix_credentials").document(platform).get()
-        if doc.exists:
-            return doc.to_dict().get("skyvernCredentialId", "")
-    except Exception: pass
-    return ""
+def detect_platform(goal: str) -> str:
+    g = goal.lower()
+    if "airbnb" in g: return "airbnb"
+    if "leboncoin" in g: return "leboncoin"
+    if "instagram" in g: return "instagram"
+    if "whatsapp" in g: return "whatsapp"
+    if "linkedin" in g: return "linkedin"
+    if "facebook" in g: return "facebook"
+    if "reddit" in g: return "reddit"
+    return "default"
 
-def build_goal(task_type: str, config: dict) -> tuple:
-    """Returns (url, prompt) tuple"""
+def load_session_cookies(platform: str) -> list:
+    if platform == "default": return []
+    try:
+        doc = db.collection("assix_sessions").document(platform).get()
+        if doc.exists:
+            cookies = doc.to_dict().get("cookies", [])
+            if cookies:
+                print(f"✓ Session loaded for {platform}")
+                return cookies
+    except Exception as e:
+        print(f"Load session error: {e}")
+    return []
+
+def build_goal(task_type: str, config: dict) -> str:
     city = config.get("city", "")
     niche = config.get("niche", "")
     max_leads = config.get("maxLeads", 10)
     message = config.get("message", "")
     max_messages = config.get("maxMessages", 10)
+    email = config.get("email", "") or os.environ.get("AIRBNB_EMAIL", "")
+    password = config.get("password", "") or os.environ.get("AIRBNB_PASSWORD", "")
 
     if task_type == "google_maps_scrape":
-        url = f"https://www.google.com/maps/search/{quote(niche + ' in ' + city)}"
-        prompt = f"""Extract all visible businesses from the left panel.
+        return f"""Go to https://www.google.com/maps/search/{quote(niche + ' in ' + city)}
+Wait for results to load. Extract all visible businesses from the left panel in ONE action.
 Get name, phone, website, address for {max_leads} businesses.
-Output as JSON array: [{{"name":"...","phone":"...","website":"...","address":"..."}}]"""
-        return url, prompt
+Output ONLY this JSON format:
+[{{"name":"...","phone":"...","website":"...","address":"..."}}]"""
 
     elif task_type == "pages_jaunes_scrape":
-        url = f"https://www.pagesjaunes.ca/search/si/{quote(niche)}/{quote(city)}"
-        prompt = f"""Extract name, phone, website, address for {max_leads} businesses.
+        return f"""Go to https://www.pagesjaunes.ca/search/si/{quote(niche)}/{quote(city)}
+Extract name, phone, website, address for {max_leads} businesses.
 Output as JSON: [{{"name":"...","phone":"...","website":"...","address":"..."}}]"""
-        return url, prompt
 
     elif task_type == "airbnb_outreach":
-        url = f"https://www.airbnb.com/s/{quote(city)}/homes"
-        prompt = f"""Send this message to {max_messages} Airbnb hosts: "{message}"
+        login_part = ""
+        if email and password:
+            login_part = f"""
+If you see a login page:
+1. Enter email: {email}
+2. Click Next
+3. If code screen: click "Try another way" then "Enter your password"
+4. Enter password: {password}
+5. Click Log in
+6. Dismiss any popups after login
+"""
+        return f"""{login_part}
+Go to https://www.airbnb.com/s/{quote(city)}/homes
 
 For each listing:
-1. Click the listing
-2. Scroll to "Meet your Host" section
+1. Click the listing photo or title
+2. Scroll down to "Meet your Host" section
 3. Click "Contact Host" or "Message"
-4. If dates needed: check-in 2 weeks from today, checkout 3 weeks from today
-5. Type the message exactly and send
-6. Go back and repeat
+4. If dates required: check-in 2 weeks from today, checkout 3 weeks from today
+5. Type exactly: "{message}"
+6. Click Send
+7. Go back and repeat
 
-Dismiss any popups. Never book or pay anything."""
-        return url, prompt
+Dismiss all popups. Never book or pay. Send to {max_messages} hosts."""
 
     elif task_type in ("dynamic", "universal"):
         goal = config.get("goal", "")
-        url = config.get("url", "https://www.google.com")
-        return url, goal
+        url = config.get("url", "")
+        return f"Go to {url}\n{goal}" if url else goal
 
     else:
         goal = config.get("goal", task_type)
-        url = config.get("url", "https://www.google.com")
-        return url, goal
+        url = config.get("url", "")
+        return f"Go to {url}\n{goal}" if url else goal
 
-def fetch_screenshot_b64(url: str) -> str:
-    """Fetch a screenshot URL and return base64"""
-    try:
-        r = requests.get(url, timeout=10)
-        if r.status_code == 200:
-            return base64.b64encode(r.content).decode("utf-8")
-    except Exception as e:
-        print(f"Screenshot fetch error: {e}")
-    return ""
 
 async def main():
     print("Assix agent starting...")
@@ -209,130 +227,154 @@ async def main():
     db.collection("assix_tasks").document(task_id).update({
         "status": "running",
         "claimedAt": datetime.now().isoformat(),
-        "runner": "skyvern",
+        "runner": "steel-cerebras",
     })
 
     log(task_id, f"Starting {task_type}...")
-    url, prompt = build_goal(task_type, config)
-    log(task_id, f"URL: {url}")
+    goal = build_goal(task_type, config)
+    log(task_id, f"Goal: {goal[:80]}...")
+
+    # Cerebras LLM — fast, high context, no token limit issues
+    llm = ChatCerebras(
+        model="gpt-oss-120b",
+        api_key=os.environ.get("CEREBRAS_API_KEY", ""),
+        temperature=0,
+    )
+
+    # Start Steel session
+    steel_client = Steel(steel_api_key=os.environ.get("STEEL_API_KEY", ""))
+    session = steel_client.sessions.create(timeout=1800000)  # 30 min
+
+    live_url = f"https://app.steel.dev/sessions/{session.id}"
+    print(f"Steel session: {session.id}")
+    print(f"Live URL: {live_url}")
+
+    db.collection("assix_tasks").document(task_id).update({
+        "liveUrl": live_url,
+        "steelSessionId": session.id,
+    })
+    log(task_id, f"Live: {live_url}", "success")
+    log(task_id, "Tap WATCH LIVE to see browser", "info")
+
+    # Load saved session cookies
+    platform = detect_platform(goal)
+    cookies = load_session_cookies(platform)
+
+    # Screenshot loop
+    stop_screenshots = threading.Event()
+
+    def screenshot_loop():
+        import requests as req
+        while not stop_screenshots.is_set():
+            try:
+                r = req.get(
+                    f"https://api.steel.dev/v1/sessions/{session.id}/screenshot",
+                    headers={"Steel-Api-Key": os.environ.get("STEEL_API_KEY", "")},
+                    timeout=5
+                )
+                if r.status_code == 200:
+                    img_b64 = base64.b64encode(r.content).decode("utf-8")
+                    db.collection("assix_tasks").document(task_id).update({
+                        "latestScreenshot": img_b64,
+                        "screenshotAt": int(datetime.now().timestamp() * 1000),
+                    })
+            except Exception: pass
+            time.sleep(5)
+
+    screenshot_thread = threading.Thread(target=screenshot_loop, daemon=True)
+    screenshot_thread.start()
+
+    # Connect browser-use to Steel via CDP
+    cdp_url = f"wss://connect.steel.dev?apiKey={os.environ.get('STEEL_API_KEY', '')}&sessionId={session.id}"
+    browser = Browser(config=BrowserConfig(cdp_url=cdp_url))
+
+    # Inject saved cookies if available
+    if cookies:
+        try:
+            page = await browser.get_current_page()
+            await page.context.add_cookies(cookies)
+            log(task_id, f"✓ Session cookies loaded for {platform}", "success")
+        except Exception as e:
+            print(f"Cookie injection error: {e}")
+
+    agent = Agent(
+        task=goal,
+        llm=llm,
+        browser=browser,
+        use_vision=False,
+        max_input_tokens=40000,
+        max_failures=5,
+    )
 
     try:
-        client = Skyvern(api_key=SKYVERN_API_KEY)
+        log(task_id, "Agent running...")
+        history = await agent.run(max_steps=60)
 
-        # Check for saved credentials
-        credential_id = get_credential_id(task_type.replace("_outreach", "").replace("_scrape", ""))
+        stop_screenshots.set()
 
-        run_kwargs = {
-            "url": url,
-            "prompt": prompt,
-            "wait_for_completion": False,
-        }
+        # Save session cookies after task
+        if platform != "default":
+            try:
+                page = await browser.get_current_page()
+                saved_cookies = await page.context.cookies()
+                if saved_cookies:
+                    db.collection("assix_sessions").document(platform).set({
+                        "cookies": saved_cookies,
+                        "savedAt": datetime.now().isoformat(),
+                    })
+                    log(task_id, f"✓ Session saved for {platform}", "success")
+            except Exception as e:
+                print(f"Save session error: {e}")
 
-        # Credential ID is passed via prompt context — Skyvern uses it automatically
-        if credential_id:
-            run_kwargs["prompt"] = f"Use credential ID: {credential_id}\n\n" + run_kwargs["prompt"]
-            log(task_id, f"✓ Using saved credentials", "success")
+        success = history.is_successful()
+        final_result = history.final_result() or ""
 
-        log(task_id, "Starting Skyvern task...")
-        run = await client.run_task(**run_kwargs)
+        # Try action results if final_result empty
+        if not final_result or len(final_result) < 50:
+            try:
+                all_results = history.action_results()
+                for r in reversed(all_results):
+                    extracted = str(r.extracted_content or "")
+                    if len(extracted) > 100:
+                        final_result = extracted
+                        break
+            except Exception: pass
 
-        run_id = run.run_id
-        live_url = getattr(run, 'app_url', '') or f"https://app.skyvern.com/runs/{run_id}"
+        log(task_id, f"Done. Success: {success}", "success" if success else "warning")
+        if final_result:
+            log(task_id, f"Result: {final_result[:200]}")
 
-        print(f"Skyvern run ID: {run_id}")
-        print(f"Live URL: {live_url}")
+        is_scraping = task_type in ["google_maps_scrape", "pages_jaunes_scrape"]
+        results = parse_results(final_result) if is_scraping else []
+
+        if results:
+            log(task_id, f"Saving {len(results)} leads...")
+            for item in results:
+                save_lead(task_id, item, task_type)
+            log(task_id, f"✓ {len(results)} leads saved", "success")
 
         db.collection("assix_tasks").document(task_id).update({
-            "skyvernRunId": run_id,
-            "liveUrl": live_url,
+            "status": "complete",
+            "results": results,
+            "finalResult": final_result[:5000],
+            "completedAt": datetime.now().isoformat(),
+            "progress": len(results) if results else 0,
+            "progressPct": 100,
         })
 
-        log(task_id, f"Live: {live_url}", "success")
-        log(task_id, "Agent running — tap TAKE CONTROL to interact", "info")
-
-        # Poll for completion with screenshot capture
-        max_wait = 25 * 60
-        elapsed = 0
-        screenshot_interval = 10
-        last_screenshot = 0
-
-        while elapsed < max_wait:
-            time.sleep(5)
-            elapsed += 5
-
-            # Screenshots grabbed from get_run response below
-            pass
-
-            try:
-                status_run = await client.get_run(run_id=run_id)
-                status = str(getattr(status_run, 'status', '') or '')
-
-                # Grab latest screenshot from run response
-                try:
-                    screenshot_urls = getattr(status_run, 'screenshot_urls', None) or []
-                    if screenshot_urls and elapsed - last_screenshot >= screenshot_interval:
-                        latest_url = screenshot_urls[0] if isinstance(screenshot_urls[0], str) else screenshot_urls[0].get('url', '')
-                        if latest_url:
-                            img_b64 = fetch_screenshot_b64(latest_url)
-                            if img_b64:
-                                db.collection("assix_tasks").document(task_id).update({
-                                    "latestScreenshot": img_b64,
-                                    "screenshotAt": int(datetime.now().timestamp() * 1000),
-                                })
-                                last_screenshot = elapsed
-                except Exception as se:
-                    print(f"Screenshot error: {se}")
-
-                if elapsed % 60 == 0:
-                    log(task_id, f"Status: {status} ({elapsed}s)")
-
-                db.collection("assix_tasks").document(task_id).update({
-                    "progress": elapsed // 5,
-                    "progressPct": min(int((elapsed / max_wait) * 100), 99),
-                    "needsInteraction": status in ("requires_action", "waiting_for_human", "paused"),
-                })
-
-                if status in ("completed", "failed", "terminated", "canceled"):
-                    output = getattr(status_run, 'output', None)
-                    extracted = getattr(status_run, 'extracted_information', None)
-                    final_result = str(output or extracted or '')
-
-                    log(task_id, f"Finished: {status}", "success" if status == "completed" else "warning")
-                    if final_result:
-                        log(task_id, f"Result: {final_result[:200]}")
-
-                    is_scraping = task_type in ["google_maps_scrape", "pages_jaunes_scrape"]
-                    results = parse_results(final_result) if is_scraping else []
-
-                    if results:
-                        log(task_id, f"Saving {len(results)} leads...")
-                        for item in results:
-                            save_lead(task_id, item, task_type)
-                        log(task_id, f"✓ {len(results)} leads saved", "success")
-
-                    db.collection("assix_tasks").document(task_id).update({
-                        "status": "complete" if status == "completed" else "error",
-                        "results": results,
-                        "finalResult": final_result[:5000],
-                        "completedAt": datetime.now().isoformat(),
-                        "progress": len(results) if results else elapsed // 5,
-                        "progressPct": 100,
-                        "needsInteraction": False,
-                    })
-
-                    log(task_id, f"✓ Complete — {len(results)} items", "success")
-                    return
-
-            except Exception as e:
-                print(f"Poll error: {e}")
-
-        log(task_id, "Task timed out", "error")
-        db.collection("assix_tasks").document(task_id).update({"status": "error"})
+        log(task_id, f"✓ Complete — {len(results)} items", "success")
 
     except Exception as e:
+        stop_screenshots.set()
         log(task_id, f"Error: {str(e)}", "error")
         db.collection("assix_tasks").document(task_id).update({"status": "error"})
         raise
+
+    finally:
+        try:
+            steel_client.sessions.release(session.id)
+            print(f"Steel session released: {session.id}")
+        except Exception: pass
 
 
 if __name__ == "__main__":
