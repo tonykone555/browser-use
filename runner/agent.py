@@ -87,7 +87,6 @@ def parse_results(text: str) -> list:
             if isinstance(result, list) and len(result) > 0:
                 return result
     except Exception: pass
-    # Fallback: parse Google Maps text
     try:
         items = []
         business_blocks = re.split(r'(?=Share[A-Z])', text)
@@ -225,6 +224,7 @@ async def main():
 
     print(f"Task: {task_id} — {task_type}")
 
+    # Mark as claimed immediately
     db.collection("assix_tasks").document(task_id).update({
         "status": "running",
         "claimedAt": datetime.now().isoformat(),
@@ -235,33 +235,36 @@ async def main():
     goal = build_goal(task_type, config)
     log(task_id, f"Goal: {goal[:80]}...")
 
-    # Cerebras LLM — fast, high context, no token limit issues
     llm = ChatCerebras(
         model="gpt-oss-120b",
         api_key=os.environ.get("CEREBRAS_API_KEY", ""),
         temperature=0,
     )
 
-    # Start Steel session
+    # Start Steel session — 15 min max on hobby plan
     steel_client = Steel(steel_api_key=os.environ.get("STEEL_API_KEY", ""))
-    session = steel_client.sessions.create(timeout=1800000)  # 30 min
+    session = steel_client.sessions.create(timeout=900000)  # 15 min max
 
     live_url = f"https://app.steel.dev/sessions/{session.id}"
     print(f"Steel session: {session.id}")
     print(f"Live URL: {live_url}")
 
+    # Save liveUrl IMMEDIATELY so frontend shows it right away
     db.collection("assix_tasks").document(task_id).update({
         "liveUrl": live_url,
         "steelSessionId": session.id,
+        "startedAt": datetime.now().isoformat(),
     })
+
+    log(task_id, f"Steel session ready", "success")
     log(task_id, f"Live: {live_url}", "success")
-    log(task_id, "Tap WATCH LIVE to see browser", "info")
+    log(task_id, "Opening browser...", "info")
 
     # Load saved session cookies
     platform = detect_platform(goal)
     cookies = load_session_cookies(platform)
 
-    # Screenshot loop
+    # Screenshot loop — every 5 seconds
     stop_screenshots = threading.Event()
 
     def screenshot_loop():
@@ -330,7 +333,6 @@ async def main():
         success = history.is_successful()
         final_result = history.final_result() or ""
 
-        # Try action results if final_result empty
         if not final_result or len(final_result) < 50:
             try:
                 all_results = history.action_results()
