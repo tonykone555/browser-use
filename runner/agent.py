@@ -160,15 +160,42 @@ def build_goal(task_type: str, config: dict) -> str:
 
     if task_type == "google_maps_scrape":
         return f"""Go to https://www.google.com/maps/search/{quote(niche + ' in ' + city)}
-Wait for results to load. Extract all visible businesses from the left panel in ONE action.
-Get name, phone, website, address for {max_leads} businesses.
-Output ONLY this JSON format:
-[{{"name":"...","phone":"...","website":"...","address":"..."}}]"""
+
+Wait 3 seconds for results to load completely.
+
+You will see a LEFT PANEL with a list of businesses.
+
+For each business in the left panel list:
+1. Click on the business name to open its detail panel
+2. Wait for details to load
+3. Extract: business name, phone number, website URL, full address
+4. Note down all details
+5. Click the back arrow to return to the results list
+6. Click the next business
+7. Repeat until you have {max_leads} businesses
+
+After collecting all {max_leads} businesses output ONLY this JSON:
+[{{"name":"Business Name","phone":"+1XXXXXXXXXX","website":"https://...","address":"Full address"}}]
+
+Important:
+- Click each business individually to get phone numbers
+- Phone numbers are only visible in the detail panel
+- Do not stop early
+- Output JSON only at the very end"""
 
     elif task_type == "pages_jaunes_scrape":
         return f"""Go to https://www.pagesjaunes.ca/search/si/{quote(niche)}/{quote(city)}
-Extract name, phone, website, address for {max_leads} businesses.
-Output as JSON: [{{"name":"...","phone":"...","website":"...","address":"..."}}]"""
+
+Wait for results to load.
+
+For each business listing on the page:
+1. Extract business name
+2. Extract phone number
+3. Extract website if available
+4. Extract address
+
+Collect {max_leads} businesses then output ONLY this JSON:
+[{{"name":"...","phone":"...","website":"...","address":"..."}}]"""
 
     elif task_type == "airbnb_outreach":
         login_part = ""
@@ -243,7 +270,7 @@ async def main():
 
     # Start Steel session — 15 min max on hobby plan
     steel_client = Steel(steel_api_key=os.environ.get("STEEL_API_KEY", ""))
-    session = steel_client.sessions.create(timeout=900000)  # 15 min max
+    session = steel_client.sessions.create(timeout=900000)
 
     live_url = f"https://app.steel.dev/sessions/{session.id}"
     print(f"Steel session: {session.id}")
@@ -260,7 +287,6 @@ async def main():
     log(task_id, f"Live: {live_url}", "success")
     log(task_id, "Opening browser...", "info")
 
-    # Load saved session cookies
     platform = detect_platform(goal)
     cookies = load_session_cookies(platform)
 
@@ -269,6 +295,8 @@ async def main():
 
     def screenshot_loop():
         import requests as req
+        # Wait 5 seconds before first screenshot
+        time.sleep(5)
         while not stop_screenshots.is_set():
             try:
                 r = req.get(
@@ -276,23 +304,23 @@ async def main():
                     headers={"Steel-Api-Key": os.environ.get("STEEL_API_KEY", "")},
                     timeout=5
                 )
-                if r.status_code == 200:
+                if r.status_code == 200 and len(r.content) > 1000:
                     img_b64 = base64.b64encode(r.content).decode("utf-8")
                     db.collection("assix_tasks").document(task_id).update({
                         "latestScreenshot": img_b64,
                         "screenshotAt": int(datetime.now().timestamp() * 1000),
                     })
-            except Exception: pass
+                    print(f"Screenshot saved: {len(r.content)} bytes")
+            except Exception as e:
+                print(f"Screenshot error: {e}")
             time.sleep(5)
 
     screenshot_thread = threading.Thread(target=screenshot_loop, daemon=True)
     screenshot_thread.start()
 
-    # Connect browser-use to Steel via CDP
     cdp_url = f"wss://connect.steel.dev?apiKey={os.environ.get('STEEL_API_KEY', '')}&sessionId={session.id}"
     browser = Browser(config=BrowserConfig(cdp_url=cdp_url))
 
-    # Inject saved cookies if available
     if cookies:
         try:
             page = await browser.get_current_page()
@@ -316,7 +344,6 @@ async def main():
 
         stop_screenshots.set()
 
-        # Save session cookies after task
         if platform != "default":
             try:
                 page = await browser.get_current_page()
