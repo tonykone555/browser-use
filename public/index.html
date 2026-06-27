@@ -549,7 +549,7 @@ function showScreenshot(src) {
   document.getElementById('live-empty').style.display = 'none'
 }
 
-function connectWS(taskId); startScreenshotPoll(taskId) {
+async function connectWS(taskId) {
   if (ws) ws.close()
   try {
     ws = new WebSocket(CONFIG.wsUrl)
