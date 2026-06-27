@@ -128,7 +128,7 @@ select,input[type=text],input[type=number],input[type=password],textarea{width:1
       <span class="brand">ASSIX<span>.</span></span>
       <span class="nav-link" onclick="setTab('tasks')">Tasks</span>
       <span class="nav-link" onclick="setTab('history')">History</span>
-      <span class="nav-link" onclick="setTab('settings')">Settings</span>
+      <span class="nav-link" onclick="setTab('settings'); loadCredentials()">Settings</span>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
       <div id="status-pill" class="status-pill" style="border:1px solid #F59E0B;color:#F59E0B">SERVER OFFLINE</div>
@@ -228,6 +228,24 @@ select,input[type=text],input[type=number],input[type=password],textarea{width:1
               <div style="font-size:11px;color:#52525B;margin-bottom:12px">Saved platform logins</div>
               <button class="btn-outline" onclick="viewSessions()">VIEW SESSIONS</button>
             </div>
+            <div class="settings-card">
+              <div class="lbl" style="margin-bottom:8px">SAVED CREDENTIALS</div>
+              <div style="font-size:10px;color:#52525B;margin-bottom:12px">Store login credentials for auto-login</div>
+              <div id="credentials-list" style="margin-bottom:12px"></div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <select id="cred-platform" style="background:#111;color:#F5F5F5;border:1px solid #2A2A2A;padding:8px;border-radius:4px;font-size:10px;font-family:inherit">
+                  <option value="airbnb">AIRBNB</option>
+                  <option value="leboncoin">LEBONCOIN</option>
+                  <option value="instagram">INSTAGRAM</option>
+                  <option value="facebook">FACEBOOK</option>
+                  <option value="linkedin">LINKEDIN</option>
+                </select>
+                <input id="cred-username" type="email" placeholder="Email / Username" style="background:#111;color:#F5F5F5;border:1px solid #2A2A2A;padding:8px;border-radius:4px;font-size:10px;font-family:inherit"/>
+                <input id="cred-password" type="password" placeholder="Password" style="background:#111;color:#F5F5F5;border:1px solid #2A2A2A;padding:8px;border-radius:4px;font-size:10px;font-family:inherit"/>
+                <button class="btn-sm" onclick="saveCredential()">SAVE CREDENTIALS</button>
+              </div>
+              <div style="font-size:8px;color:#3F3F46;margin-top:8px">Stored securely in Skyvern vault.</div>
+            </div>
           </div>
         </div>
         <div id="pill">
@@ -256,6 +274,7 @@ select,input[type=text],input[type=number],input[type=password],textarea{width:1
       <select id="task-type-select" onchange="renderTaskFields()">
         <option value="google_maps_scrape">Google Maps Scrape</option>
         <option value="pages_jaunes_scrape">Pages Jaunes Scrape</option>
+        <option value="airbnb_outreach">Airbnb Outreach</option>
         <option value="instagram_dm">Instagram DM Campaign</option>
         <option value="whatsapp_outreach">WhatsApp Outreach</option>
         <option value="market_research">Market Research</option>
@@ -491,7 +510,7 @@ function showLiveIframe(url, status, needsLogin) {
     iframe.style.display = 'block'
     empty.style.display = 'none'
 
-    // Add FULL SCREEN button bottom right
+    // Add FULL SCREEN overlay button
     const existingBtn = document.getElementById('fs-overlay-btn')
     if (existingBtn) existingBtn.remove()
     const fsBtn = document.createElement('button')
@@ -500,22 +519,6 @@ function showLiveIframe(url, status, needsLogin) {
     fsBtn.style.cssText = `position:absolute;bottom:48px;right:8px;z-index:10;background:rgba(0,0,0,0.8);color:#fff;border:1px solid #3F3F46;padding:5px 10px;border-radius:4px;font-size:8px;font-weight:600;cursor:pointer;letter-spacing:.06em`
     fsBtn.onclick = () => window.open(viewerUrl, '_blank')
     iframe.parentElement.appendChild(fsBtn)
-
-    // Show WATCH LIVE button top right
-    const takeControlBtn = document.getElementById('take-control-btn')
-    if (takeControlBtn) {
-      takeControlBtn.style.display = 'flex'
-      takeControlBtn.textContent = 'WATCH LIVE'
-      takeControlBtn.style.background = accentColor
-      takeControlBtn.onclick = () => window.open(viewerUrl, '_blank')
-    }
-
-    // Show screenshot on top of iframe if available
-    const screenshot = activeTask && activeTask.latestScreenshot
-    if (screenshot && img) {
-      img.src = 'data:image/png;base64,' + screenshot
-      img.style.cssText = 'position:absolute;top:28px;left:0;width:100%;height:calc(100% - 68px);object-fit:cover;display:block;z-index:2'
-    }
   }
 }
 
@@ -600,7 +603,7 @@ function renderTaskList() {
   el.innerHTML = visible.map(t => `
     <div class="task-item-wrap" data-id="${t.taskId}" id="wrap-${t.taskId}">
       <div class="task-item ${activeTask?.taskId===t.taskId?'active':''}" data-id="${t.taskId}"
-        onclick="selectTask(${JSON.stringify(t).replace(/"/g,'&quot;')})"
+        onclick="selectTask(${JSON.stringify(t).replace(/"/g,'"')})"
         ontouchstart="touchStart(event,'${t.taskId}')"
         ontouchmove="touchMove(event,'${t.taskId}')"
         ontouchend="touchEnd(event,'${t.taskId}')">
@@ -637,7 +640,7 @@ function renderQuickList() {
 
 function renderAgentList() {
   document.getElementById('agent-list').innerHTML = tasks.slice(0,6).map(t => `
-    <div class="agent-thumb ${activeTask?.taskId===t.taskId?'active':''}" data-id="${t.taskId}" onclick="selectTask(${JSON.stringify(t).replace(/"/g,'&quot;')})">
+    <div class="agent-thumb ${activeTask?.taskId===t.taskId?'active':''}" data-id="${t.taskId}" onclick="selectTask(${JSON.stringify(t).replace(/"/g,'"')})">
       <div class="thumb-box ${activeTask?.taskId===t.taskId?'active':''}">
         <div style="position:absolute;top:4px;right:4px;width:5px;height:5px;border-radius:50%;background:${statusColor(t.status)}"></div>
         ${screenshots[t.taskId]?`<img class="thumb-img" src="${screenshots[t.taskId]}" style="display:block"/>`:`<span>${(t.status||'').toUpperCase()}</span>`}
@@ -672,7 +675,7 @@ function renderAllTasks() {
   const el = document.getElementById('tasks-inner')
   if (tasks.length===0) { el.innerHTML='<div class="lbl" style="margin-bottom:12px">ALL TASKS [0]</div><div style="font-size:12px;color:#52525B;padding:40px 0;text-align:center">No tasks yet.</div>'; return }
   el.innerHTML = `<div class="lbl" style="margin-bottom:12px">ALL TASKS [${tasks.length}]</div>` + tasks.map(t => `
-    <div class="card clickable" onclick="selectTask(${JSON.stringify(t).replace(/"/g,'&quot;')});setTab('operator')" style="border-color:${activeTask?.taskId===t.taskId?'#6366F1':'#1A1A1A'}">
+    <div class="card clickable" onclick="selectTask(${JSON.stringify(t).replace(/"/g,'"')});setTab('operator')" style="border-color:${activeTask?.taskId===t.taskId?'#6366F1':'#1A1A1A'}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
         <span class="card-title">${(t.label||t.taskType).toUpperCase()}</span>
         <div style="display:flex;align-items:center;gap:8px">
@@ -889,6 +892,13 @@ function renderTaskFields() {
     html = `
       <div class="field"><div class="lbl" style="margin-bottom:6px">TOPIC</div><input type="text" placeholder="e.g. plumbers in Toronto" onchange="taskConfig.topic=this.value"/></div>
       <div class="field-last"><div class="lbl" style="margin-bottom:6px">GOAL</div><input type="text" placeholder="e.g. find pain points" onchange="taskConfig.goal=this.value"/></div>`
+  } else if (type==='airbnb_outreach') {
+    html = `
+      <div class="field"><div class="lbl" style="margin-bottom:6px">CITY</div><input type="text" placeholder="e.g. Miami, Paris, Montreal" onchange="taskConfig.city=this.value"/></div>
+      <div class="field"><div class="lbl" style="margin-bottom:6px">AIRBNB EMAIL</div><input type="email" placeholder="your@email.com" onchange="taskConfig.email=this.value"/></div>
+      <div class="field"><div class="lbl" style="margin-bottom:6px">AIRBNB PASSWORD</div><input type="password" placeholder="••••••••" onchange="taskConfig.password=this.value"/></div>
+      <div class="field"><div class="lbl" style="margin-bottom:6px">MESSAGE</div><textarea rows="4" placeholder="Hi, I came across your listing..." onchange="taskConfig.message=this.value"></textarea></div>
+      <div class="field-last"><div class="lbl" style="margin-bottom:6px">MAX MESSAGES</div><input type="number" value="10" onchange="taskConfig.maxMessages=parseInt(this.value)"/></div>`
   } else if (type==='dynamic') {
     html = `<div class="field-last"><div class="lbl" style="margin-bottom:6px">DESCRIBE YOUR GOAL</div><textarea rows="5" placeholder="e.g. Go to Pages Jaunes, search plumbers in Montreal, extract names and phones" onchange="taskConfig.goal=this.value"></textarea><div style="font-size:10px;color:#52525B;margin-top:6px">AI will plan and execute automatically</div></div>`
   }
