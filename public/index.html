@@ -92,6 +92,29 @@ input,select,textarea{font-family:'Space Grotesk',sans-serif;outline:none}
 .btn-accent{background:transparent;border:1px solid #6366F1;color:#6366F1;font-size:9px;font-weight:700;letter-spacing:.08em;padding:5px 12px;border-radius:20px}
 .settings-card{background:#0F0F0F;border:1px solid #1A1A1A;border-radius:4px;padding:16px;margin-bottom:12px}
 .code-box{font-family:'JetBrains Mono',monospace;font-size:10px;color:#6366F1;background:#080808;padding:10px;border-radius:4px;margin-top:8px}
+
+/* STEEL BUTTON */
+#steel-btn {
+  display:none;
+  align-items:center;
+  gap:6px;
+  background:#6366F1;
+  color:white;
+  border:none;
+  font-size:9px;
+  font-weight:700;
+  letter-spacing:.08em;
+  padding:6px 14px;
+  border-radius:20px;
+  animation:pulse 2s infinite;
+  cursor:pointer;
+}
+#steel-btn.visible {
+  display:flex;
+  animation:none;
+}
+#steel-btn:hover { background:#5254cc; }
+
 #pill{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);z-index:50;background:#141414;border:1px solid #2A2A2A;border-radius:40px;padding:4px;display:flex;gap:2px;box-shadow:0 8px 32px rgba(0,0,0,.7)}
 .pill-btn{background:transparent;color:#52525B;border:none;font-size:9px;font-weight:700;letter-spacing:.1em;padding:9px 18px;border-radius:36px;transition:all .2s}
 .pill-btn.active{background:#F5F5F5;color:#080808}
@@ -113,7 +136,6 @@ select,input[type=text],input[type=number],input[type=password],textarea{width:1
 #report-overlay.show{display:flex}
 #report-box{background:#0F0F0F;border:1px solid #1A1A1A;border-radius:8px;padding:24px;width:600px;max-height:80vh;display:flex;flex-direction:column}
 #report-content{flex:1;overflow-y:auto;font-size:12px;line-height:1.8;color:#C4C4C4;white-space:pre-wrap;font-family:'JetBrains Mono',monospace}
-/* SWIPE TO DELETE */
 .task-item-wrap{position:relative;overflow:hidden;margin-bottom:1px}
 .task-item-delete{position:absolute;right:0;top:0;bottom:0;width:56px;background:#EF4444;display:flex;align-items:center;justify-content:center;font-size:10px;color:white;font-weight:700;cursor:pointer;letter-spacing:.06em;transform:translateX(100%);transition:transform .2s}
 .task-item-wrap.swiped .task-item-delete{transform:translateX(0)}
@@ -145,16 +167,23 @@ select,input[type=text],input[type=number],input[type=password],textarea{width:1
     </div>
     <div id="toggle-left" class="toggle-left" onclick="toggleLeft()">›</div>
     <div id="main">
+
+      <!-- TASK HEADER with Steel button -->
       <div id="task-header">
         <div>
           <div class="lbl">VIEWING ACTIVE TASK</div>
           <div id="task-title" style="font-size:14px;font-weight:700;letter-spacing:.08em;margin-top:2px">NO TASK SELECTED.</div>
         </div>
-        <div style="display:flex;gap:6px">
+        <div style="display:flex;gap:6px;align-items:center">
           <button class="btn-sm" onclick="stopActiveTask()">STOP</button>
-          <button class="btn-sm" onclick="runNow()" style="background:#00ff88;color:#000;margin-left:8px">▶ RUN NOW</button>
+          <!-- STEEL BUTTON — shows when task has a Steel session -->
+          <button id="steel-btn" onclick="openSteelSession()">
+            ⚡ OPEN IN STEEL →
+          </button>
+          <button class="btn-sm" onclick="runNow()" style="background:#00ff88;color:#000;margin-left:4px">▶ RUN NOW</button>
         </div>
       </div>
+
       <div id="metrics">
         <div class="metric"><div class="lbl">PROGRESS</div><div class="metric-val" id="m-progress">0/0</div></div>
         <div class="metric"><div class="lbl">STATUS</div><div class="metric-val" id="m-status">—</div></div>
@@ -178,7 +207,6 @@ select,input[type=text],input[type=number],input[type=password],textarea{width:1
               <div style="flex-shrink:0;font-size:9px;color:#52525B" id="live-task-name">NO TASK</div>
             </div>
             <img id="live-img" alt="live view" style="margin-top:28px;display:none"/>
-            <button id="take-control-btn" onclick="" style="display:none;position:absolute;top:36px;right:8px;z-index:10;background:rgba(99,102,241,0.9);color:white;border:none;padding:6px 12px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer;align-items:center;gap:4px">⚡ TAKE CONTROL</button>
             <iframe id="live-iframe" style="position:absolute;top:0;left:0;width:100%;height:100%;border:none;display:none" allow="camera;microphone;fullscreen" sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-pointer-lock" scrolling="yes"></iframe>
             <div id="live-empty" style="margin-top:28px">START A TASK TO SEE LIVE VIEW</div>
             <div id="live-footer">
@@ -240,11 +268,10 @@ select,input[type=text],input[type=number],input[type=password],textarea{width:1
                   <option value="facebook">FACEBOOK</option>
                   <option value="linkedin">LINKEDIN</option>
                 </select>
-                <input id="cred-username" type="email" placeholder="Email / Username" style="background:#111;color:#F5F5F5;border:1px solid #2A2A2A;padding:8px;border-radius:4px;font-size:10px;font-family:inherit"/>
-                <input id="cred-password" type="password" placeholder="Password" style="background:#111;color:#F5F5F5;border:1px solid #2A2A2A;padding:8px;border-radius:4px;font-size:10px;font-family:inherit"/>
+                <input id="cred-username" type="email" placeholder="Email / Username"/>
+                <input id="cred-password" type="password" placeholder="Password"/>
                 <button class="btn-sm" onclick="saveCredential()">SAVE CREDENTIALS</button>
               </div>
-              <div style="font-size:8px;color:#3F3F46;margin-top:8px">Stored securely in Skyvern vault.</div>
             </div>
           </div>
         </div>
@@ -331,7 +358,7 @@ let attachments = []
 let chat = [{ role:'agent', msg:'Assix Agent ready. Start a task or ask me anything.' }]
 let taskConfig = {}
 let serverOk = false
-// Local dismissed task IDs — persists across renders
+let currentSteelUrl = null
 let dismissedTasks = new Set(JSON.parse(localStorage.getItem('dismissedTasks')||'[]'))
 
 const statusColor = s => s==='running'||s==='active'?'#10B981':s==='paused_captcha'?'#F59E0B':s==='error'?'#EF4444':s==='queued'?'#6366F1':'#52525B'
@@ -345,6 +372,29 @@ document.addEventListener('DOMContentLoaded', () => {
   setInterval(fetchTasks, 10000)
   setInterval(pingServer, 30000)
 })
+
+// ============================================================
+// STEEL BUTTON — opens Steel session in new tab
+// ============================================================
+function openSteelSession() {
+  if (currentSteelUrl) {
+    window.open(currentSteelUrl, '_blank')
+  }
+}
+
+function updateSteelButton(task) {
+  const btn = document.getElementById('steel-btn')
+  const liveUrl = task?.liveUrl || ''
+
+  if (liveUrl && liveUrl.includes('steel.dev') && (task?.status === 'running' || task?.status === 'paused_captcha')) {
+    currentSteelUrl = liveUrl
+    btn.classList.add('visible')
+    btn.title = `Open Steel session: ${liveUrl}`
+  } else {
+    currentSteelUrl = null
+    btn.classList.remove('visible')
+  }
+}
 
 async function pingServer() {
   try {
@@ -370,7 +420,6 @@ async function fetchTasks() {
   try {
     const res = await fetch(CONFIG.serverUrl+'/api/tasks/all')
     const all = await res.json()
-    // Filter out locally dismissed tasks
     tasks = all.filter(t => !dismissedTasks.has(t.taskId))
     if (!activeTask && tasks.length > 0) selectTask(tasks[0])
     renderTaskList()
@@ -378,6 +427,12 @@ async function fetchTasks() {
     renderHistory()
     renderAllTasks()
     document.getElementById('active-count').textContent = tasks.filter(t=>t.status==='running'||t.status==='paused_captcha'||t.status==='queued').length
+
+    // Update Steel button if active task changed
+    if (activeTask) {
+      const updated = tasks.find(t => t.taskId === activeTask.taskId)
+      if (updated) updateSteelButton(updated)
+    }
   } catch(e) {}
 }
 
@@ -437,6 +492,10 @@ async function startScreenshotPolling(taskId) {
         document.getElementById('m-progress').textContent = (t.progress||0)+'/'+(t.total||0)
         document.getElementById('live-status').textContent = '● '+(t.status||'IDLE').toUpperCase()
         document.getElementById('live-prog').textContent = (t.progress||0)+'/'+(t.total||0)
+
+        // Update Steel button live
+        updateSteelButton(t)
+
         if (t.status==='complete'||t.status==='error'||t.status==='stopped') {
           clearInterval(screenshotPollInterval)
           screenshotPollInterval = null
@@ -471,7 +530,15 @@ function selectTask(task) {
   document.getElementById('live-niche').textContent = [task.config?.niche?.toUpperCase(), task.config?.city?.toUpperCase()].filter(Boolean).join(' · ')
   document.getElementById('live-box').classList.toggle('captcha', task.status==='paused_captcha')
   document.getElementById('captcha-bar').classList.toggle('show', task.status==='paused_captcha')
-  if (task.liveUrl && task.liveUrl.startsWith('http')) { showLiveIframe(task.liveUrl, task.status, task.needsLogin) } else if (screenshots[task.taskId]) showScreenshot(screenshots[task.taskId])
+
+  // Update Steel button
+  updateSteelButton(task)
+
+  if (task.liveUrl && task.liveUrl.startsWith('http')) {
+    showLiveIframe(task.liveUrl, task.status, task.needsLogin)
+  } else if (screenshots[task.taskId]) {
+    showScreenshot(screenshots[task.taskId])
+  }
   if (task.status==='running'||task.status==='paused_captcha') connectWS(task.taskId)
 }
 
@@ -491,44 +558,24 @@ function showLiveIframe(url, status, needsLogin) {
     return
   }
 
-  // Use URL directly — app.steel.dev/sessions/ID shows the live browser
-  const viewerUrl = url
+  currentLiveUrl = url
 
-  currentLiveUrl = viewerUrl
-
-  const isComplete = status === 'complete'
-  const isError = status === 'error'
-  const accentColor = isComplete ? '#22c55e' : isError ? '#ef4444' : '#6366F1'
-
-  // Always load iframe directly — Steel login happens inside iframe
   if (iframe) {
-    if (iframe.src !== viewerUrl) {
-      iframe.src = viewerUrl
-    }
+    if (iframe.src !== url) iframe.src = url
     iframe.style.display = 'block'
     empty.style.display = 'none'
 
-    // Add FULL SCREEN button top right
-    const existingBtn = document.getElementById('fs-overlay-btn')
-    if (existingBtn) existingBtn.remove()
+    // Remove old overlay buttons
+    document.getElementById('fs-overlay-btn')?.remove()
+    document.getElementById('login-helper')?.remove()
+
+    // Full screen button
     const fsBtn = document.createElement('button')
     fsBtn.id = 'fs-overlay-btn'
     fsBtn.textContent = 'FULL SCREEN'
     fsBtn.style.cssText = `position:absolute;top:36px;right:8px;z-index:10;background:rgba(99,102,241,0.9);color:#fff;border:none;padding:6px 12px;border-radius:6px;font-size:10px;font-weight:700;cursor:pointer`
-    fsBtn.onclick = () => window.open(viewerUrl, '_blank')
+    fsBtn.onclick = () => window.open(url, '_blank')
     iframe.parentElement.appendChild(fsBtn)
-
-    // Add LOGIN FULL SCREEN banner at bottom
-    const existingHelper = document.getElementById('login-helper')
-    if (existingHelper) existingHelper.remove()
-    const helper = document.createElement('div')
-    helper.id = 'login-helper'
-    helper.style.cssText = `position:absolute;bottom:40px;left:0;right:0;z-index:10;background:rgba(0,0,0,0.85);padding:6px 10px;display:flex;align-items:center;justify-content:space-between;gap:8px`
-    helper.innerHTML = `
-      <span style="font-size:8px;color:#71717A;letter-spacing:.05em">If login screen — sign in via full screen first</span>
-      <button onclick="window.open('${viewerUrl}','_blank')" style="background:#6366F1;color:#fff;border:none;padding:4px 10px;border-radius:4px;font-size:8px;font-weight:600;cursor:pointer;white-space:nowrap">LOGIN FULL SCREEN</button>
-    `
-    iframe.parentElement.appendChild(helper)
   }
 }
 
@@ -557,6 +604,8 @@ function connectWS(taskId) {
           activeTask = {...activeTask,...data}
           document.getElementById('m-progress').textContent = `${data.progress||0}/${data.total||0}`
           document.getElementById('live-prog').textContent = `${data.progress||0}/${data.total||0}`
+          // Update Steel button on status change
+          updateSteelButton(activeTask)
         }
         if (data.type==='captcha') {
           document.getElementById('captcha-bar').classList.add('show')
@@ -566,6 +615,7 @@ function connectWS(taskId) {
         if (data.type==='complete') {
           document.getElementById('captcha-bar').classList.remove('show')
           document.getElementById('live-box').classList.remove('captcha')
+          updateSteelButton({status:'complete'})
           fetchTasks()
         }
       } catch(e) {}
@@ -585,22 +635,19 @@ function addLog(log) {
   inner.scrollTop = inner.scrollHeight
 }
 
-// ============================================================
-// Swipe to delete + X button — works offline
-// ============================================================
 function dismissTask(taskId) {
-  // Remove from local list immediately
   dismissedTasks.add(taskId)
   localStorage.setItem('dismissedTasks', JSON.stringify([...dismissedTasks]))
   tasks = tasks.filter(t => t.taskId !== taskId)
   if (activeTask?.taskId === taskId) {
     stopScreenshotPolling()
     activeTask = null
+    currentSteelUrl = null
+    document.getElementById('steel-btn').classList.remove('visible')
     document.getElementById('task-title').textContent = 'NO TASK SELECTED.'
     document.getElementById('live-img').style.display = 'none'
     document.getElementById('live-empty').style.display = 'flex'
   }
-  // Try to update server in background — don't wait
   fetch(CONFIG.serverUrl+'/api/task/'+taskId, {method:'DELETE'}).catch(()=>{})
   renderTaskList()
   renderAgentList()
@@ -613,7 +660,7 @@ function renderTaskList() {
   el.innerHTML = visible.map(t => `
     <div class="task-item-wrap" data-id="${t.taskId}" id="wrap-${t.taskId}">
       <div class="task-item ${activeTask?.taskId===t.taskId?'active':''}" data-id="${t.taskId}"
-        onclick="selectTask(${JSON.stringify(t).replace(/"/g,'"')})"
+        onclick="selectTask(${JSON.stringify(t).replace(/"/g,'&quot;')})"
         ontouchstart="touchStart(event,'${t.taskId}')"
         ontouchmove="touchMove(event,'${t.taskId}')"
         ontouchend="touchEnd(event,'${t.taskId}')">
@@ -632,7 +679,6 @@ function renderTaskList() {
   `).join('')
 }
 
-// Touch swipe logic
 let touchStartX = 0
 function touchStart(e, id) { touchStartX = e.touches[0].clientX }
 function touchMove(e, id) {
@@ -650,7 +696,7 @@ function renderQuickList() {
 
 function renderAgentList() {
   document.getElementById('agent-list').innerHTML = tasks.slice(0,6).map(t => `
-    <div class="agent-thumb ${activeTask?.taskId===t.taskId?'active':''}" data-id="${t.taskId}" onclick="selectTask(${JSON.stringify(t).replace(/"/g,'"')})">
+    <div class="agent-thumb ${activeTask?.taskId===t.taskId?'active':''}" data-id="${t.taskId}" onclick="selectTask(${JSON.stringify(t).replace(/"/g,'&quot;')})">
       <div class="thumb-box ${activeTask?.taskId===t.taskId?'active':''}">
         <div style="position:absolute;top:4px;right:4px;width:5px;height:5px;border-radius:50%;background:${statusColor(t.status)}"></div>
         ${screenshots[t.taskId]?`<img class="thumb-img" src="${screenshots[t.taskId]}" style="display:block"/>`:`<span>${(t.status||'').toUpperCase()}</span>`}
@@ -685,7 +731,7 @@ function renderAllTasks() {
   const el = document.getElementById('tasks-inner')
   if (tasks.length===0) { el.innerHTML='<div class="lbl" style="margin-bottom:12px">ALL TASKS [0]</div><div style="font-size:12px;color:#52525B;padding:40px 0;text-align:center">No tasks yet.</div>'; return }
   el.innerHTML = `<div class="lbl" style="margin-bottom:12px">ALL TASKS [${tasks.length}]</div>` + tasks.map(t => `
-    <div class="card clickable" onclick="selectTask(${JSON.stringify(t).replace(/"/g,'"')});setTab('operator')" style="border-color:${activeTask?.taskId===t.taskId?'#6366F1':'#1A1A1A'}">
+    <div class="card clickable" onclick="selectTask(${JSON.stringify(t).replace(/"/g,'&quot;')});setTab('operator')" style="border-color:${activeTask?.taskId===t.taskId?'#6366F1':'#1A1A1A'}">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
         <span class="card-title">${(t.label||t.taskType).toUpperCase()}</span>
         <div style="display:flex;align-items:center;gap:8px">
@@ -839,9 +885,48 @@ async function viewSessions() {
   } catch(e) { alert('Server offline') }
 }
 
-// ============================================================
-// Countdown timer for queued tasks
-// ============================================================
+async function saveCredential() {
+  const platform = document.getElementById('cred-platform').value
+  const username = document.getElementById('cred-username').value
+  const password = document.getElementById('cred-password').value
+  if (!username || !password) { alert('Enter username and password'); return }
+  try {
+    const res = await fetch(CONFIG.serverUrl+'/api/credentials/save', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ platform, username, password })
+    })
+    const data = await res.json()
+    if (data.success) { alert(`✓ Credentials saved for ${platform}`); loadCredentials() }
+    else alert('Error: ' + data.error)
+  } catch(e) { alert('Server offline') }
+}
+
+async function loadCredentials() {
+  try {
+    const res = await fetch(CONFIG.serverUrl+'/api/credentials/all')
+    const creds = await res.json()
+    const el = document.getElementById('credentials-list')
+    if (creds.length === 0) { el.innerHTML = '<div style="font-size:10px;color:#52525B">No saved credentials</div>'; return }
+    el.innerHTML = creds.map(c => `
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:6px 0;border-bottom:1px solid #1A1A1A">
+        <div>
+          <div style="font-size:10px;font-weight:600">${c.platform.toUpperCase()}</div>
+          <div style="font-size:9px;color:#52525B">${c.username}</div>
+        </div>
+        <button class="btn-sm" onclick="deleteCredential('${c.platform}')">DELETE</button>
+      </div>
+    `).join('')
+  } catch(e) {}
+}
+
+async function deleteCredential(platform) {
+  try {
+    await fetch(CONFIG.serverUrl+'/api/credentials/'+platform, { method: 'DELETE' })
+    loadCredentials()
+  } catch(e) {}
+}
+
 let countdownInterval = null
 
 function startCountdown() {
@@ -906,7 +991,7 @@ function renderTaskFields() {
     html = `
       <div class="field"><div class="lbl" style="margin-bottom:6px">CITY</div><input type="text" placeholder="e.g. Miami, Paris, Montreal" onchange="taskConfig.city=this.value"/></div>
       <div class="field"><div class="lbl" style="margin-bottom:6px">AIRBNB EMAIL</div><input type="email" placeholder="your@email.com" onchange="taskConfig.email=this.value"/></div>
-      <div class="field"><div class="lbl" style="margin-bottom:6px">AIRBNB PASSWORD</div><input type="password" placeholder="••••••••" onchange="taskConfig.password=this.value"/></div>
+      <div class="field"><div class="lbl" style="margin-bottom:6px">AIRBNB PASSWORD</div><input type="password" onchange="taskConfig.password=this.value"/></div>
       <div class="field"><div class="lbl" style="margin-bottom:6px">MESSAGE</div><textarea rows="4" placeholder="Hi, I came across your listing..." onchange="taskConfig.message=this.value"></textarea></div>
       <div class="field-last"><div class="lbl" style="margin-bottom:6px">MAX MESSAGES</div><input type="number" value="10" onchange="taskConfig.maxMessages=parseInt(this.value)"/></div>`
   } else if (type==='dynamic') {
@@ -924,7 +1009,7 @@ async function startTask() {
     connectWS(taskId)
     fetchTasks()
     startScreenshotPolling(taskId)
-  } catch(e) { alert('Server not reachable. Is Railway deployed?') }
+  } catch(e) { alert('Server not reachable. Is Render deployed?') }
 }
 </script>
 </body>
