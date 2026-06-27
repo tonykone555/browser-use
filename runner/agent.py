@@ -260,15 +260,8 @@ async def main():
             time.sleep(5)
             elapsed += 5
 
-            # Take screenshot every 10 seconds
-            if elapsed - last_screenshot >= screenshot_interval:
-                screenshot = take_screenshot(run_id)
-                if screenshot:
-                    db.collection("assix_tasks").document(task_id).update({
-                        "latestScreenshot": screenshot,
-                        "screenshotAt": int(datetime.now().timestamp() * 1000),
-                    })
-                last_screenshot = elapsed
+            # Screenshots grabbed from get_run response below
+            pass
 
             try:
                 status_run = await client.get_run(run_id=run_id)
